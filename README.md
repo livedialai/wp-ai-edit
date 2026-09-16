@@ -32,7 +32,38 @@ assets/js/widget.js             Chat-Oberfläche, Vorschlagskarten, Bildvorschau
 assets/css/widget.css           Sprechblase, Panel, Karten
 prompts/chat.md                 Systemanweisung Nur-Lese-Modus
 prompts/editsite.md             Systemanweisung Bearbeitungsmodus
+docs/funktionen.md              erzeugte Referenz aller Funktionen
+docs/referenz-erheben.php       Erhebungsskript
+docs/referenz-erzeugen.py       Erzeuger der Referenz
 ```
+
+## Dokumentation
+
+| Datei | Inhalt |
+|---|---|
+| `README.md` | Überblick, Einbau, Konzept, Entscheidungen, Testergebnisse |
+| `docs/funktionen.md` | **Vollständige Referenz:** alle 18 Fähigkeiten mit Parametern, Typen und Pflichtfeldern; REST-Routen; jede Einstellung mit Vorgabewert; Datenbankoptionen; alle Klassen mit ihren öffentlichen Methoden; Hooks; Befehle; Seitenbauer-Erkennung |
+| `docs/referenz-erheben.php` | Erhebungsskript, läuft in der Installation |
+| `docs/referenz-erzeugen.py` | Erzeugt daraus `docs/funktionen.md` |
+
+### Referenz neu erzeugen
+
+`docs/funktionen.md` wird **nicht von Hand geschrieben**. Die Daten kommen aus dem, was
+WordPress tatsächlich registriert — damit die Referenz nicht veraltet, während der Code
+weiterläuft:
+
+```bash
+# 1. Bestand in der Installation erheben
+cp docs/referenz-erheben.php /tmp/
+wp eval-file /tmp/referenz-erheben.php        # schreibt /tmp/wpaie-doku.json
+
+# 2. JSON herunterladen und Referenz erzeugen
+python3 docs/referenz-erzeugen.py <plugin-verzeichnis> <pfad-zu-wpaie-doku.json>
+```
+
+Das Erhebungsskript legt seine Ausgabe über die Umgebungsvariable `WPAIE_DATEN` ab,
+das Erzeugerskript seinen Zielpfad über `WPAIE_ZIEL`. Schlüssel werden dabei durch
+`(gesetzt)` ersetzt — die Referenz enthält nie Zugangsdaten.
 
 ## Warum es auf der Website nicht existiert
 

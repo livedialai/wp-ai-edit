@@ -108,7 +108,7 @@ class WP_AI_Edit_Abilities {
 					'type'                 => 'object',
 					'properties'           => array(
 						'auftrag' => array( 'type' => 'string', 'description' => __( 'Auftrags-ID aus „Bild erzeugen".', 'wp-ai-edit' ) ),
-						'titel'   => array( 'type' => 'string' ),
+						'titel'   => array( 'type' => 'string', 'description' => __( 'Titel und Alternativtext in der Mediathek.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'auftrag' ),
 					'additionalProperties' => false,
@@ -731,7 +731,7 @@ class WP_AI_Edit_Abilities {
 						'id'      => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
 						'titel'   => array( 'type' => 'string', 'description' => __( 'Optional: neuer Titel.', 'wp-ai-edit' ) ),
 						'inhalt'  => array( 'type' => 'string', 'description' => __( 'Neuer Inhalt als Block-Markup.', 'wp-ai-edit' ) ),
-						'status'  => array( 'type' => 'string', 'enum' => array( 'publish', 'draft', 'private' ) ),
+						'status'  => array( 'type' => 'string', 'enum' => array( 'publish', 'draft', 'private' ), 'description' => __( 'Seitenstatus: publish = veröffentlicht, draft = Entwurf, private = nur für Angemeldete.', 'wp-ai-edit' ) ),
 						'direkt'  => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer ausdrücklich sofortige Veröffentlichung verlangt. Sonst leer lassen: die Änderung wird dann als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'id', 'inhalt' ),
@@ -839,10 +839,10 @@ class WP_AI_Edit_Abilities {
 				'input_schema'        => array(
 					'type'                 => 'object',
 					'properties'           => array(
-						'titel'  => array( 'type' => 'string' ),
-						'slug'   => array( 'type' => 'string' ),
-						'inhalt' => array( 'type' => 'string' ),
-						'status' => array( 'type' => 'string', 'enum' => array( 'publish', 'draft' ) ),
+						'titel'  => array( 'type' => 'string', 'description' => __( 'Titel der neuen Seite.', 'wp-ai-edit' ) ),
+						'slug'   => array( 'type' => 'string', 'description' => __( 'Adressteil, z. B. speisekarte. Leer lassen erzeugt WordPress aus dem Titel.', 'wp-ai-edit' ) ),
+						'inhalt' => array( 'type' => 'string', 'description' => __( 'Inhalt als Block-Markup.', 'wp-ai-edit' ) ),
+						'status' => array( 'type' => 'string', 'enum' => array( 'publish', 'draft' ), 'description' => __( 'draft = Entwurf (Standard), publish = sofort veröffentlicht.', 'wp-ai-edit' ) ),
 						'direkt' => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer ausdrücklich sofortige Veröffentlichung verlangt. Sonst leer lassen: die Seite wird dann nur vorgeschlagen.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'titel', 'inhalt' ),
@@ -1189,7 +1189,7 @@ class WP_AI_Edit_Abilities {
 					'type'                 => 'object',
 					'properties'           => array(
 						'datei'  => array( 'type' => 'string', 'description' => __( 'Plugin-Datei, z. B. contact-form-7/wp-contact-form-7.php', 'wp-ai-edit' ) ),
-						'aktiv'  => array( 'type' => 'boolean' ),
+						'aktiv'   => array( 'type' => 'boolean', 'description' => __( 'true = aktivieren, false = deaktivieren.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'datei', 'aktiv' ),
 					'additionalProperties' => false,
@@ -1247,7 +1247,7 @@ class WP_AI_Edit_Abilities {
 				'input_schema'        => array(
 					'type'                 => 'object',
 					'properties'           => array(
-						'option' => array( 'type' => 'string' ),
+						'option' => array( 'type' => 'string', 'description' => __( 'Name der Einstellung, z. B. woocommerce_currency. Muss zu einem aktiven Plugin gehören.', 'wp-ai-edit' ) ),
 						'wert'   => array( 'description' => __( 'Neuer Wert (Text, Zahl, Wahrheitswert oder Objekt).', 'wp-ai-edit' ) ),
 						'direkt' => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer sofortige Änderung verlangt. Sonst leer lassen: wird als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
 					),
@@ -1340,7 +1340,7 @@ class WP_AI_Edit_Abilities {
 					'type'                 => 'object',
 					'properties'           => array(
 						'url'        => array( 'type' => 'string', 'description' => __( 'Vollständige URL mit https://', 'wp-ai-edit' ) ),
-						'umfang'     => array( 'type' => 'string', 'enum' => array( 'kurz', 'voll' ) ),
+						'umfang'     => array( 'type' => 'string', 'enum' => array( 'kurz', 'voll' ), 'description' => __( 'kurz = nur Farben, Schriften und Aufbau (Standard). voll = zusätzlich Überschriften, Buttons und Bildtexte.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'url' ),
 					'additionalProperties' => false,
@@ -1421,7 +1421,7 @@ class WP_AI_Edit_Abilities {
 					'type'                 => 'object',
 					'properties'           => array(
 						'id'          => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
-						'bezeichnung' => array( 'type' => 'string' ),
+						'bezeichnung' => array( 'type' => 'string', 'description' => __( 'Kurze Bezeichnung, damit die Sicherung später zuzuordnen ist, z. B. „Vor Umbau der Startseite".', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'id' ),
 					'additionalProperties' => false,
