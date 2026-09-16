@@ -91,6 +91,98 @@
 	/* Serveraufruf                                                      */
 	/* ---------------------------------------------------------------- */
 
+	/**
+	 * Offene Vorschläge als Karten mit Schaltflächen anzeigen.
+	 *
+	 * @param {Array} liste Vorschläge vom Server.
+	 */
+	function zeigeVorschlaege( liste ) {
+		Array.prototype.forEach.call( document.querySelectorAll( '.wpaie-karte' ), function ( k ) {
+			k.remove();
+		} );
+		if ( ! liste || ! liste.length ) {
+			return;
+		}
+
+		liste.forEach( function ( v ) {
+			var karte = document.createElement( 'div' );
+			karte.className = 'wpaie-karte';
+			karte.setAttribute( 'data-id', v.id );
+
+			var kopf = document.createElement( 'div' );
+			kopf.className = 'wpaie-karte-kopf';
+			kopf.textContent = 'Vorschlag · noch nicht live';
+
+			var text = document.createElement( 'div' );
+			text.className = 'wpaie-karte-text';
+			text.textContent = v.beschreibung || v.art;
+
+			var knopfreihe = document.createElement( 'div' );
+			knopfreihe.className = 'wpaie-karte-knoepfe';
+
+			if ( v.vorschau ) {
+				var a = document.createElement( 'a' );
+				a.className = 'wpaie-knopf';
+				a.href = v.vorschau;
+				a.target = '_blank';
+				a.rel = 'noopener';
+				a.textContent = 'Vorschau ansehen';
+				knopfreihe.appendChild( a );
+			}
+
+			var ja = document.createElement( 'button' );
+			ja.type = 'button';
+			ja.className = 'wpaie-knopf wpaie-knopf-ja';
+			ja.textContent = 'Live stellen';
+			ja.addEventListener( 'click', function () {
+				vorschlagAktion( v.id, 'apply', karte, ja );
+			} );
+			knopfreihe.appendChild( ja );
+
+			var nein = document.createElement( 'button' );
+			nein.type = 'button';
+			nein.className = 'wpaie-knopf wpaie-knopf-nein';
+			nein.textContent = 'Verwerfen';
+			nein.addEventListener( 'click', function () {
+				vorschlagAktion( v.id, 'discard', karte, nein );
+			} );
+			knopfreihe.appendChild( nein );
+
+			karte.appendChild( kopf );
+			karte.appendChild( text );
+			karte.appendChild( knopfreihe );
+			log.appendChild( karte );
+		} );
+
+		log.scrollTop = log.scrollHeight;
+	}
+
+	function vorschlagAktion( id, aktion, karte, knopf ) {
+		knopf.disabled = true;
+		setzeStatus( aktion === 'apply' ? 'wird übernommen …' : 'wird verworfen …', 'laden' );
+
+		window.wp.apiFetch( {
+			path: '/wp-ai-edit/v1/pending/' + aktion,
+			method: 'POST',
+			data: { id: id }
+		} )
+			.then( function ( r ) {
+				karte.remove();
+				if ( aktion === 'apply' ) {
+					var ziel = r && r.ergebnis && r.ergebnis.link ? ' → ' + r.ergebnis.link : '';
+					anhaengen( 'Übernommen und live gestellt.' + ziel, 'assistant' );
+				} else {
+					anhaengen( 'Vorschlag verworfen. Die Website ist unverändert.', 'assistant' );
+				}
+				setzeStatus( 'bereit' );
+			} )
+			.catch( function ( e ) {
+				knopf.disabled = false;
+				var m = ( e && e.data && e.data.message ) || ( e && e.message ) || 'Fehler';
+				setzeStatus( m, 'fehler' );
+			} );
+	}
+
 	function frage( nachricht ) {
 		setzeStatus( 'denkt …', 'laden' );
 		send.disabled = true;
@@ -108,7 +200,12 @@
 				}
 				var antwort = res && res.antwort ? String( res.antwort ) : '(keine Antwort)';
 				anhaengen( antwort, 'assistant', antwort.length > 400 && antwort.trim().charAt( 0 ) === '{' );
-				setzeStatus( res && res.abilities ? res.abilities + ' Fähigkeiten aktiv' : 'bereit' );
+				if ( res && res.vorschlaege && res.vorschlaege.length ) {
+					zeigeVorschlaege( res.vorschlaege );
+					setzeStatus( res.vorschlaege.length + ' Vorschlag/Vorschläge warten auf dich' );
+				} else {
+					setzeStatus( res && res.abilities ? res.abilities + ' Fähigkeiten aktiv' : 'bereit' );
+				}
 			} )
 			.catch( function ( fehler ) {
 				tipp.remove();

@@ -47,6 +47,8 @@ class WP_AI_Edit {
 			// Eigene Systemanweisungen. Leer = mitgelieferte Datei aus /prompts.
 			'prompt_chat'    => '',
 			'prompt_edit'    => '',
+			// Arbeitsweise: 'stage' = immer erst vorschlagen, 'direct' = sofort anwenden.
+			'workflow'       => 'stage',
 		);
 	}
 
@@ -94,6 +96,7 @@ class WP_AI_Edit {
 	public function __construct() {
 		require_once WPAIE_DIR . 'includes/class-inspector.php';
 		require_once WPAIE_DIR . 'includes/class-abilities.php';
+		require_once WPAIE_DIR . 'includes/class-workflow.php';
 		require_once WPAIE_DIR . 'includes/class-llm.php';
 		require_once WPAIE_DIR . 'includes/class-rest.php';
 
@@ -101,6 +104,9 @@ class WP_AI_Edit {
 		add_action( 'wp_abilities_api_init', array( 'WP_AI_Edit_Abilities', 'registrieren' ) );
 
 		add_action( 'rest_api_init', array( 'WP_AI_Edit_REST', 'routen' ) );
+
+		// Vorschau vorgeschlagener Änderungen (?wpaie_vorschau=<id>).
+		add_action( 'init', array( 'WP_AI_Edit_Workflow', 'vorschau_ausgeben' ) );
 
 		add_action( 'admin_menu', array( $this, 'menue' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
@@ -257,6 +263,7 @@ class WP_AI_Edit {
 					'enabled'        => isset( $_POST['enabled'] ) ? 1 : 0,
 					'min_capability' => isset( $_POST['min_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['min_capability'] ) ) : 'edit_pages',
 					'history_limit'  => isset( $_POST['history_limit'] ) ? max( 2, min( 40, (int) $_POST['history_limit'] ) ) : 12,
+					'workflow'       => ( isset( $_POST['workflow'] ) && 'direct' === $_POST['workflow'] ) ? 'direct' : 'stage',
 				)
 			);
 
@@ -353,6 +360,23 @@ class WP_AI_Edit {
 				<textarea name="prompt_chat" rows="10" class="large-text code" spellcheck="false"><?php echo esc_textarea( $chat ); ?></textarea>
 				<h3><?php esc_html_e( 'Bearbeitungsmodus (/editsite)', 'wp-ai-edit' ); ?></h3>
 				<textarea name="prompt_edit" rows="24" class="large-text code" spellcheck="false"><?php echo esc_textarea( $edit ); ?></textarea>
+
+				<h2><?php esc_html_e( 'Arbeitsweise', 'wp-ai-edit' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Änderungen', 'wp-ai-edit' ); ?></th>
+						<td>
+							<fieldset>
+								<label><input type="radio" name="workflow" value="stage" <?php checked( 'direct' !== $s['workflow'] ); ?>> <strong><?php esc_html_e( 'Erst vorschlagen (empfohlen)', 'wp-ai-edit' ); ?></strong></label>
+								<p class="description"><?php esc_html_e( 'Der Agent legt Änderungen als Vorschlag mit Vorschau-Link vor. Live wird erst nach „Übernehmen".', 'wp-ai-edit' ); ?></p>
+								<br>
+								<label><input type="radio" name="workflow" value="direct" <?php checked( 'direct' === $s['workflow'] ); ?>> <strong><?php esc_html_e( 'Sofort anwenden', 'wp-ai-edit' ); ?></strong></label>
+								<p class="description"><?php esc_html_e( 'Änderungen gehen direkt live. Sicherung vor jeder Änderung und Rücknahme bleiben erhalten.', 'wp-ai-edit' ); ?></p>
+							</fieldset>
+							<p class="description"><?php esc_html_e( 'Unabhängig davon kann der Nutzer im Chat „mach das direkt" sagen – dann wird die einzelne Änderung ohne Rückfrage angewendet. Umgekehrt fragt der Agent vorher, wenn er unsicher ist.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+				</table>
 
 				<h2><?php esc_html_e( 'Sichtbarkeit', 'wp-ai-edit' ); ?></h2>
 				<table class="form-table" role="presentation">

@@ -51,7 +51,9 @@ class WP_AI_Edit_REST {
 			'kiedit/toggle-plugin',
 			'kiedit/snapshot',
 			'kiedit/rollback',
-			'core/get-site-info',
+			'kiedit/list-pending',
+			'kiedit/apply-pending',
+			'kiedit/discard-pending',
 		);
 	}
 
@@ -104,6 +106,91 @@ class WP_AI_Edit_REST {
 				'permission_callback' => static fn() => current_user_can( 'manage_options' ),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/pending',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'pending' ),
+				'permission_callback' => array( __CLASS__, 'nur_backend' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/pending/apply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'pending_apply' ),
+				'permission_callback' => array( __CLASS__, 'nur_backend' ),
+				'args'                => array( 'id' => array( 'type' => 'string', 'required' => true ) ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/pending/discard',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'pending_discard' ),
+				'permission_callback' => array( __CLASS__, 'nur_backend' ),
+				'args'                => array( 'id' => array( 'type' => 'string', 'required' => true ) ),
+			)
+		);
+	}
+
+	/**
+	 * Offene Vorschläge auflisten.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function pending() {
+		$liste = array();
+		foreach ( WP_AI_Edit_Workflow::alle() as $v ) {
+			$liste[] = array(
+				'id'           => $v['id'],
+				'art'          => $v['art'],
+				'beschreibung' => $v['text'],
+				'vorschau'     => $v['vorschau'],
+				'zeit'         => $v['zeit'],
+			);
+		}
+		return rest_ensure_response(
+			array(
+				'anzahl'     => count( $liste ),
+				'vorschlaege' => $liste,
+				'arbeitsweise' => WP_AI_Edit_Workflow::modus(),
+			)
+		);
+	}
+
+	/**
+	 * Vorschlag übernehmen.
+	 *
+	 * @param WP_REST_Request $request Anfrage.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function pending_apply( WP_REST_Request $request ) {
+		$r = WP_AI_Edit_Workflow::anwenden( sanitize_text_field( (string) $request->get_param( 'id' ) ) );
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+		return rest_ensure_response( $r );
+	}
+
+	/**
+	 * Vorschlag verwerfen.
+	 *
+	 * @param WP_REST_Request $request Anfrage.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function pending_discard( WP_REST_Request $request ) {
+		$id = sanitize_text_field( (string) $request->get_param( 'id' ) );
+		if ( ! WP_AI_Edit_Workflow::verwerfen( $id ) ) {
+			return new WP_Error( 'wpaie_vorschlag', __( 'Vorschlag nicht gefunden.', 'wp-ai-edit' ), array( 'status' => 404 ) );
+		}
+		return rest_ensure_response( array( 'verworfen' => true, 'id' => $id ) );
 	}
 
 	/**
@@ -313,11 +400,23 @@ class WP_AI_Edit_REST {
 		$verlauf[] = array( 'rolle' => 'assistant', 'text' => $antwort );
 		self::verlauf_speichern( $verlauf );
 
+		// ---- Offene Vorschläge für die Oberfläche ------------------------
+		$offen = array();
+		foreach ( WP_AI_Edit_Workflow::alle() as $v ) {
+			$offen[] = array(
+				'id'           => $v['id'],
+				'art'          => $v['art'],
+				'beschreibung' => $v['text'],
+				'vorschau'     => $v['vorschau'],
+			);
+		}
+
 		return rest_ensure_response(
 			array(
-				'modus'    => $echter_modus,
-				'antwort'  => $antwort,
-				'abilities' => count( 'edit' === $echter_modus ? self::abilities_edit() : self::abilities_chat() ),
+				'modus'      => $echter_modus,
+				'antwort'    => $antwort,
+				'abilities'  => count( 'edit' === $echter_modus ? self::abilities_edit() : self::abilities_chat() ),
+				'vorschlaege' => $offen,
 			)
 		);
 	}

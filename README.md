@@ -51,6 +51,68 @@ Ein Aufruf der REST-Route ohne Anmeldung endet mit HTTP 401.
 
 Tastenkürzel: **Strg/Cmd + K** öffnet das Widget, **Esc** schließt es.
 
+## Vorschlagen und Bestätigen
+
+Standardmäßig ändert der Agent **nichts direkt**. Eine Schreiboperation wird als
+**Vorschlag** gespeichert und erscheint im Chat als Karte mit drei Schaltflächen:
+
+- **Vorschau ansehen** — öffnet die vorgeschlagene Fassung unter
+  `?wpaie_vorschau=<id>`. Nur für angemeldete Nutzer, die Live-Seite bleibt unberührt.
+- **Live stellen** — übernimmt die Änderung, legt vorher eine Sicherung an.
+- **Verwerfen** — löscht den Vorschlag, nichts passiert.
+
+Der Agent **fragt nach**, wenn nicht klar ist, was gewünscht ist:
+
+> Soll ich das direkt live stellen — oder möchtest du es dir erst ansehen?
+
+Die Arbeitsweise lässt sich unter *Einstellungen → WP AI Edit → Arbeitsweise* umstellen:
+
+- **Erst vorschlagen** (Standard) — jede Änderung wird vorgelegt
+- **Sofort anwenden** — Änderungen gehen direkt live, Sicherung und Rücknahme bleiben
+
+Unabhängig davon kann der Nutzer im Chat **„mach das direkt"** sagen. Dann setzt das
+Modell `direkt: true` und die eine Änderung wird ohne Rückfrage angewendet. Umgekehrt
+fragt der Agent bei großen Umbauten vorher.
+
+### Der Weg dahin im Hintergrund
+
+```
+Nutzer: „Ändere die Öffnungszeiten auf 9-18 Uhr"
+   ↓
+kiedit/update-page  (ohne direkt=true)
+   ↓  nichts geschrieben
+Vorschlag 2b2c552b902f + Vorschau-Link
+   ↓  Nutzer klickt „Vorschau ansehen"
+?wpaie_vorschau=2b2c552b902f  → 403 für Fremde, Ansicht für Angemeldete
+   ↓  Nutzer klickt „Live stellen"
+Sicherung → wp_update_post() → live
+```
+
+Der Agent kann Vorschläge auch selbst verwalten:
+
+- `kiedit/list-pending` — offene Vorschläge mit IDs
+- `kiedit/apply-pending` — übernehmen (nur nach Zustimmung)
+- `kiedit/discard-pending` — verwerfen
+
+## Fähigkeiten
+
+| Fähigkeit | Wirkung |
+|---|---|
+| `kiedit/inspect-site` | Titel, Theme, Seiten, Menüs, Plugin-Zustand |
+| `kiedit/list-plugins` | Installierte Plugins und Zustand |
+| `kiedit/fetch-design` | Fremde Seite einlesen: Farben, Schriften, Layout |
+| `kiedit/create-page` | Seite anlegen (Vorschlag oder direkt) |
+| `kiedit/update-page` | Seite ändern (Vorschlag oder direkt) |
+| `kiedit/set-options` | Core-Optionen aus Weißliste |
+| `kiedit/install-plugin` | Plugin aus dem Repository installieren |
+| `kiedit/toggle-plugin` | Plugin aktivieren/deaktivieren |
+| `kiedit/set-plugin-setting` | Plugin-Einstellung setzen |
+| `kiedit/snapshot` | Sicherung eines Stands |
+| `kiedit/rollback` | Sicherung zurücknehmen |
+| `kiedit/list-pending` | Offene Vorschläge |
+| `kiedit/apply-pending` | Vorschlag übernehmen |
+| `kiedit/discard-pending` | Vorschlag verwerfen |
+
 ## Voraussetzungen
 
 - WordPress **6.9+** (Abilities API; geprüft auf 7.1)

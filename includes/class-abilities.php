@@ -64,6 +64,123 @@ class WP_AI_Edit_Abilities {
 		self::design_einlesen();
 		self::snapshot();
 		self::rollback();
+		self::vorschlaege();
+	}
+
+	/**
+	 * Fähigkeiten für den Umgang mit Vorschlägen.
+	 *
+	 * @return void
+	 */
+	protected static function vorschlaege(): void {
+		wp_register_ability(
+			'kiedit/list-pending',
+			array(
+				'label'               => __( 'Offene Vorschläge auflisten', 'wp-ai-edit' ),
+				'description'         => __( 'Zeigt Änderungen, die vorgeschlagen, aber noch nicht übernommen wurden. Vor dem Anwenden aufrufen, um die Vorschlags-ID zu erhalten.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array( 'type' => 'object', 'properties' => array(), 'additionalProperties' => false ),
+				'execute_callback'    => array( __CLASS__, 'cb_vorschlaege_auflisten' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'readonly' => true, 'show_in_rest' => true ),
+			)
+		);
+
+		wp_register_ability(
+			'kiedit/apply-pending',
+			array(
+				'label'               => __( 'Vorschlag übernehmen', 'wp-ai-edit' ),
+				'description'         => __( 'Wendet einen vorgeschlagenen Entwurf an. Nur aufrufen, wenn der Nutzer ausdrücklich zugestimmt hat.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'vorschlag_id' => array( 'type' => 'string', 'description' => __( 'ID aus „Offene Vorschläge auflisten".', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'vorschlag_id' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_vorschlag_uebernehmen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+
+		wp_register_ability(
+			'kiedit/discard-pending',
+			array(
+				'label'               => __( 'Vorschlag verwerfen', 'wp-ai-edit' ),
+				'description'         => __( 'Verwirft einen vorgeschlagenen Entwurf, ohne etwas zu ändern.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'vorschlag_id' => array( 'type' => 'string', 'description' => __( 'ID aus „Offene Vorschläge auflisten".', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'vorschlag_id' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_vorschlag_verwerfen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: offene Vorschläge auflisten.
+	 *
+	 * @return array
+	 */
+	public static function cb_vorschlaege_auflisten(): array {
+		$liste = array();
+		foreach ( WP_AI_Edit_Workflow::alle() as $v ) {
+			$liste[] = array(
+				'vorschlag_id' => $v['id'],
+				'art'          => $v['art'],
+				'zeit'         => $v['zeit'],
+				'beschreibung' => $v['text'],
+				'vorschau'     => $v['vorschau'],
+				'ziel_id'      => (int) ( $v['ziel']['id'] ?? 0 ),
+			);
+		}
+		return array(
+			'anzahl'     => count( $liste ),
+			'vorschlaege' => $liste,
+			'arbeitsweise' => WP_AI_Edit_Workflow::modus(),
+		);
+	}
+
+	/**
+	 * Callback: Vorschlag übernehmen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_vorschlag_uebernehmen( $input = array() ) {
+		$id = sanitize_text_field( (string) ( $input['vorschlag_id'] ?? '' ) );
+		if ( '' === $id ) {
+			return new WP_Error( 'kiedit_id', __( 'Vorschlags-ID fehlt.', 'wp-ai-edit' ) );
+		}
+		return WP_AI_Edit_Workflow::anwenden( $id );
+	}
+
+	/**
+	 * Callback: Vorschlag verwerfen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_vorschlag_verwerfen( $input = array() ) {
+		$id = sanitize_text_field( (string) ( $input['vorschlag_id'] ?? '' ) );
+		if ( '' === $id ) {
+			return new WP_Error( 'kiedit_id', __( 'Vorschlags-ID fehlt.', 'wp-ai-edit' ) );
+		}
+		$ok = WP_AI_Edit_Workflow::verwerfen( $id );
+		if ( ! $ok ) {
+			return new WP_Error( 'kiedit_vorschlag', __( 'Vorschlag nicht gefunden.', 'wp-ai-edit' ) );
+		}
+		return array( 'verworfen' => true, 'vorschlag_id' => $id );
 	}
 
 	/**
@@ -241,6 +358,7 @@ class WP_AI_Edit_Abilities {
 						'titel'   => array( 'type' => 'string', 'description' => __( 'Optional: neuer Titel.', 'wp-ai-edit' ) ),
 						'inhalt'  => array( 'type' => 'string', 'description' => __( 'Neuer Inhalt als Block-Markup.', 'wp-ai-edit' ) ),
 						'status'  => array( 'type' => 'string', 'enum' => array( 'publish', 'draft', 'private' ) ),
+						'direkt'  => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer ausdrücklich sofortige Veröffentlichung verlangt. Sonst leer lassen: die Änderung wird dann als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'id', 'inhalt' ),
 					'additionalProperties' => false,
@@ -268,6 +386,36 @@ class WP_AI_Edit_Abilities {
 		}
 		if ( ! current_user_can( 'edit_post', $id ) ) {
 			return new WP_Error( 'kiedit_rechte', __( 'Keine Berechtigung für diese Seite.', 'wp-ai-edit' ) );
+		}
+		if ( '' === trim( $inhalt ) ) {
+			return new WP_Error( 'kiedit_leer', __( 'Der neue Inhalt ist leer. Abbruch, um nichts zu überschreiben.', 'wp-ai-edit' ) );
+		}
+
+		// Vorschlags-Modus: nicht anwenden, sondern zur Bestätigung vorlegen.
+		if ( ! WP_AI_Edit_Workflow::direkt_erlaubt( $input ) ) {
+			$neu = array( 'inhalt' => wp_kses_post( $inhalt ) );
+			if ( ! empty( $input['titel'] ) ) {
+				$neu['titel'] = sanitize_text_field( (string) $input['titel'] );
+			}
+			if ( ! empty( $input['status'] ) ) {
+				$neu['status'] = (string) $input['status'];
+			}
+			$text = sprintf(
+				/* translators: 1: Seitentitel, 2: Zeichenzahl */
+				__( 'Seite „%1$s" ändern (%2$d Zeichen neu)', 'wp-ai-edit' ),
+				$post->post_title,
+				mb_strlen( $inhalt )
+			);
+			$v = WP_AI_Edit_Workflow::einreihen( 'update-page', array( 'id' => $id, 'titel' => $post->post_title ), $neu, array( 'inhalt' => $post->post_content ), $text );
+
+			return array(
+				'vorgeschlagen' => true,
+				'vorschlag_id'  => $v['id'],
+				'vorschau'      => $v['vorschau'],
+				'nicht_angewendet' => true,
+				'beschreibung'  => $text,
+				'hinweis'       => __( 'Die Änderung ist NICHT live. Der Nutzer muss sie im Chat bestätigen oder mit direkt=true erneut anfordern.', 'wp-ai-edit' ),
+			);
 		}
 
 		self::sicherung_anlegen( 'update-page', $id, $post->post_content, $post->post_title );
@@ -316,6 +464,7 @@ class WP_AI_Edit_Abilities {
 						'slug'   => array( 'type' => 'string' ),
 						'inhalt' => array( 'type' => 'string' ),
 						'status' => array( 'type' => 'string', 'enum' => array( 'publish', 'draft' ) ),
+						'direkt' => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer ausdrücklich sofortige Veröffentlichung verlangt. Sonst leer lassen: die Seite wird dann nur vorgeschlagen.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'titel', 'inhalt' ),
 					'additionalProperties' => false,
@@ -339,13 +488,45 @@ class WP_AI_Edit_Abilities {
 			return new WP_Error( 'kiedit_titel', __( 'Titel fehlt.', 'wp-ai-edit' ) );
 		}
 
+		$ist_entwurf = in_array( ( $input['status'] ?? 'draft' ), array( 'publish', 'draft' ), true ) ? $input['status'] : 'draft';
+
+		// Vorschlags-Modus: nur vorlegen.
+		if ( ! WP_AI_Edit_Workflow::direkt_erlaubt( $input ) ) {
+			$text = sprintf(
+				/* translators: %s: Seitentitel */
+				__( 'Neue Seite „%s" anlegen', 'wp-ai-edit' ),
+				$titel
+			);
+			$v = WP_AI_Edit_Workflow::einreihen(
+				'create-page',
+				array( 'titel' => $titel ),
+				array(
+					'titel'  => $titel,
+					'slug'   => sanitize_title( (string) ( $input['slug'] ?? $titel ) ),
+					'inhalt' => (string) ( $input['inhalt'] ?? '' ),
+					'status' => $ist_entwurf,
+				),
+				array(),
+				$text
+			);
+
+			return array(
+				'vorgeschlagen'    => true,
+				'vorschlag_id'     => $v['id'],
+				'vorschau'         => $v['vorschau'],
+				'nicht_angewendet' => true,
+				'beschreibung'     => $text,
+				'hinweis'          => __( 'Die Seite ist noch NICHT angelegt. Der Nutzer muss sie im Chat bestätigen.', 'wp-ai-edit' ),
+			);
+		}
+
 		$id = wp_insert_post(
 			array(
 				'post_type'    => 'page',
 				'post_title'   => $titel,
 				'post_name'    => sanitize_title( (string) ( $input['slug'] ?? $titel ) ),
 				'post_content' => wp_kses_post( (string) ( $input['inhalt'] ?? '' ) ),
-				'post_status'  => in_array( ( $input['status'] ?? 'draft' ), array( 'publish', 'draft' ), true ) ? $input['status'] : 'draft',
+				'post_status'  => $ist_entwurf,
 			),
 			true
 		);
@@ -386,6 +567,7 @@ class WP_AI_Edit_Abilities {
 							'type'        => 'object',
 							'description' => __( 'Schlüssel-Wert-Paare der zu ändernden Optionen.', 'wp-ai-edit' ),
 						),
+						'direkt'   => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer sofortige Änderung verlangt. Sonst leer lassen: wird als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'optionen' ),
 					'additionalProperties' => false,
@@ -406,6 +588,37 @@ class WP_AI_Edit_Abilities {
 	public static function cb_optionen_setzen( $input = array() ) {
 		$erlaubt = self::erlaubte_optionen();
 		$werte   = isset( $input['optionen'] ) && is_array( $input['optionen'] ) ? $input['optionen'] : array();
+
+		if ( empty( $werte ) ) {
+			return new WP_Error( 'kiedit_leer', __( 'Keine Optionen angegeben.', 'wp-ai-edit' ) );
+		}
+
+		// Vorschlags-Modus: nur vorlegen.
+		if ( ! WP_AI_Edit_Workflow::direkt_erlaubt( $input ) ) {
+			$namen = array();
+			$alt   = array();
+			foreach ( $werte as $k => $v ) {
+				if ( isset( $erlaubt[ $k ] ) ) {
+					$namen[] = $k;
+					$alt[ $k ] = get_option( $k );
+				}
+			}
+			$text = sprintf(
+				/* translators: %s: Optionsnamen */
+				__( 'Einstellungen ändern: %s', 'wp-ai-edit' ),
+				implode( ', ', $namen )
+			);
+			$v = WP_AI_Edit_Workflow::einreihen( 'set-options', array(), $werte, $alt, $text );
+
+			return array(
+				'vorgeschlagen'    => true,
+				'vorschlag_id'     => $v['id'],
+				'nicht_angewendet' => true,
+				'beschreibung'     => $text,
+				'hinweis'          => __( 'Die Einstellungen sind NICHT geändert. Der Nutzer muss bestätigen.', 'wp-ai-edit' ),
+			);
+		}
+
 		$geaendert = array();
 		$abgelehnt = array();
 
@@ -657,6 +870,7 @@ class WP_AI_Edit_Abilities {
 					'properties'           => array(
 						'option' => array( 'type' => 'string' ),
 						'wert'   => array( 'description' => __( 'Neuer Wert (Text, Zahl, Wahrheitswert oder Objekt).', 'wp-ai-edit' ) ),
+						'direkt' => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer sofortige Änderung verlangt. Sonst leer lassen: wird als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
 					),
 					'required'             => array( 'option', 'wert' ),
 					'additionalProperties' => false,
@@ -685,9 +899,34 @@ class WP_AI_Edit_Abilities {
 			return new WP_Error( 'kiedit_option', __( 'Core-Option: bitte set-options verwenden.', 'wp-ai-edit' ) );
 		}
 
+		$wert = $input['wert'] ?? '';
+
+		// Vorschlags-Modus: nur vorlegen.
+		if ( ! WP_AI_Edit_Workflow::direkt_erlaubt( $input ) ) {
+			$text = sprintf(
+				/* translators: %s: Optionsname */
+				__( 'Plugin-Einstellung ändern: %s', 'wp-ai-edit' ),
+				$option
+			);
+			$v = WP_AI_Edit_Workflow::einreihen(
+				'set-plugin-setting',
+				array( 'option' => $option ),
+				array( 'wert' => $wert ),
+				array( 'wert' => get_option( $option ) ),
+				$text
+			);
+
+			return array(
+				'vorgeschlagen'    => true,
+				'vorschlag_id'     => $v['id'],
+				'nicht_angewendet' => true,
+				'beschreibung'     => $text,
+				'hinweis'          => __( 'Die Einstellung ist NICHT geändert. Der Nutzer muss bestätigen.', 'wp-ai-edit' ),
+			);
+		}
+
 		self::sicherung_anlegen( 'set-plugin-setting', 0, (string) get_option( $option ), $option );
 
-		$wert = $input['wert'] ?? '';
 		if ( is_array( $wert ) ) {
 			$wert = map_deep( $wert, 'sanitize_text_field' );
 		} elseif ( is_bool( $wert ) || is_int( $wert ) || is_float( $wert ) ) {

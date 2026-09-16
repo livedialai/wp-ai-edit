@@ -178,6 +178,85 @@
 	padding: 12px;
 }
 
+/* ---------------------------------------------------------------- */
+/* Vorschlags-Karten                                                 */
+/* ---------------------------------------------------------------- */
+
+.wpaie-karte {
+	align-self: stretch;
+	background: #fff;
+	border: 1px solid #f0c33c;
+	border-left: 4px solid #f0c33c;
+	border-radius: 10px;
+	padding: 10px 12px;
+	font-size: 12px;
+}
+
+.wpaie-karte-kopf {
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	font-size: 10px;
+	color: #8a6d00;
+	margin-bottom: 4px;
+}
+
+.wpaie-karte-text {
+	color: #1d2327;
+	margin-bottom: 10px;
+	line-height: 1.45;
+}
+
+.wpaie-karte-knoepfe {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wpaie-knopf {
+	display: inline-block;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+	border-radius: 6px;
+	padding: 5px 11px;
+	font-size: 12px;
+	line-height: 1.4;
+	cursor: pointer;
+	color: #2271b1;
+	text-decoration: none;
+}
+
+.wpaie-knopf:hover {
+	background: #f0f6fc;
+	border-color: #2271b1;
+}
+
+.wpaie-knopf-ja {
+	background: #2271b1;
+	border-color: #2271b1;
+	color: #fff;
+	font-weight: 600;
+}
+
+.wpaie-knopf-ja:hover {
+	background: #135e96;
+	color: #fff;
+}
+
+.wpaie-knopf-nein {
+	color: #b32d2e;
+}
+
+.wpaie-knopf-nein:hover {
+	background: #fcf0f1;
+	border-color: #b32d2e;
+}
+
+.wpaie-knopf:disabled {
+	opacity: .5;
+	cursor: default;
+}
+
 .wpaie-dot {
 	width: 6px;
 	height: 6px;
