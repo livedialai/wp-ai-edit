@@ -1,4 +1,7 @@
-# WP AI Edit (v1.1.1)
+# WP AI Edit
+
+Die jeweils aktuelle Fassung samt Versionsnummer steht unter
+**[Releases](https://github.com/livedialai/wp-ai-edit/releases/latest)**.
 
 KI-Chat **im WordPress-Backend**, der die Website bearbeitet. Erscheint als
 schwebendes Widget unten rechts in wp-admin — auf der öffentlichen Website
@@ -245,7 +248,7 @@ https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit.zip
 ```
 
 Dieselbe Datei liegt zusätzlich mit Versionsnummer im Namen daneben
-(`wp-ai-edit-1.1.1.zip`), wenn du eine bestimmte Fassung festhalten willst.
+(`wp-ai-edit-<version>.zip`), wenn du eine bestimmte Fassung festhalten willst.
 
 WordPress → **Plugins → Installieren → Plugin hochladen** → ZIP auswählen → aktivieren.
 
@@ -364,7 +367,7 @@ Sonde ins interne Netz benutzt werden kann.
 | Plugin installiert und aktiv | ✅ |
 | 18 Fähigkeiten registriert | ✅ |
 | Frontend unberührt (Startseite, /shop/, /warenkorb/) | ✅ HTTP 200, 0 Vorkommen |
-| Widget im Backend | ✅ sichtbar, `widget.js` v1.1.1 |
+| Widget im Backend | ✅ sichtbar |
 | Live-Frage über den Chat | ✅ 89 Gerichte gezählt, 8 aktive Plugins gelistet |
 
 ## Grenzen

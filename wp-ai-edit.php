@@ -3,7 +3,7 @@
  * Plugin Name:       WP AI Edit
  * Plugin URI:        https://github.com/livedialai/wp-ai-edit
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
- * Version:           1.1.4
+ * Version:           1.1.5
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Author:            Weser AI
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPAIE_VERSION', '1.1.4' );
+define( 'WPAIE_VERSION', '1.1.5' );
 define( 'WPAIE_FILE', __FILE__ );
 define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) );

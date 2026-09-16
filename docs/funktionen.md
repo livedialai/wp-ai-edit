@@ -1,6 +1,6 @@
 # Funktionen — vollständige Referenz
 
-Stand: 2026-09-16 16:01:48 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.3
+Stand: 2026-09-16 18:48:32 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.5
 
 Diese Datei wird aus einer **laufenden Installation** erzeugt: die Fähigkeiten kommen
 aus `wp_get_abilities()`, die Routen aus dem REST-Server, die Modi aus `class-rest.php`.
@@ -472,7 +472,7 @@ Vorschlags-Schicht: Änderungen landen als Entwurf zur Bestätigung, können abe
 
 ### `wp-ai-edit.php` — `WP_AI_Edit`
 
-Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.4 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.4' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
+Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.5 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.5' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
 
 | Methode | Sichtbar | Zweck |
 |---|:--:|---|
