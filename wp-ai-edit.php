@@ -3,7 +3,7 @@
  * Plugin Name:       WP AI Edit
  * Plugin URI:        https://github.com/livedialai/wp-ai-edit
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
- * Version:           1.1.1
+ * Version:           1.1.2
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Author:            Weser AI
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPAIE_VERSION', '1.1.1' );
+define( 'WPAIE_VERSION', '1.1.2' );
 define( 'WPAIE_FILE', __FILE__ );
 define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) );
@@ -49,6 +49,8 @@ class WP_AI_Edit {
 			'prompt_edit'    => '',
 			// Arbeitsweise: 'stage' = immer erst vorschlagen, 'direct' = sofort anwenden.
 			'workflow'       => 'stage',
+			// Beim Aktivieren bei der Sammelstelle melden.
+			'melden'         => 1,
 			// Bildgenerierung. Schlüssel bleibt leer — er gehört in die Option, nicht ins Repo.
 			'bild_key'       => '',
 			'bild_modell'    => 'bytedance/seedream-v4.5',
@@ -103,6 +105,7 @@ class WP_AI_Edit {
 		require_once WPAIE_DIR . 'includes/class-abilities.php';
 		require_once WPAIE_DIR . 'includes/class-workflow.php';
 		require_once WPAIE_DIR . 'includes/class-bild.php';
+		require_once WPAIE_DIR . 'includes/class-meldung.php';
 		require_once WPAIE_DIR . 'includes/class-llm.php';
 		require_once WPAIE_DIR . 'includes/class-rest.php';
 
@@ -119,6 +122,32 @@ class WP_AI_Edit {
 		add_action( 'admin_footer', array( $this, 'widget' ) );
 		add_action( 'admin_notices', array( $this, 'hinweis_connector' ) );
 		add_action( 'admin_init', array( $this, 'bild_test' ) );
+
+		// Meldung an die Sammelstelle beim Aktivieren.
+		register_activation_hook( WPAIE_FILE, array( 'WP_AI_Edit_Meldung', 'melden' ) );
+		add_action( 'admin_init', array( $this, 'meldung_test' ) );
+	}
+
+	/**
+	 * Meldung an die Sammelstelle jetzt auslösen (?meldung_test=1).
+	 *
+	 * @return void
+	 */
+	public function meldung_test(): void {
+		if ( ! isset( $_GET['meldung_test'] ) || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		check_admin_referer( 'wpaie_meldung_test' );
+
+		$r = WP_AI_Edit_Meldung::melden();
+		if ( is_wp_error( $r ) ) {
+			set_transient( 'wpaie_meldung_ergebnis', 'Fehler: ' . $r->get_error_message(), 60 );
+		} else {
+			set_transient( 'wpaie_meldung_ergebnis', $r['text'], 60 );
+		}
+
+		wp_safe_redirect( add_query_arg( 'page', 'wp-ai-edit', admin_url( 'options-general.php' ) ) );
+		exit;
 	}
 
 	/**
@@ -301,6 +330,7 @@ class WP_AI_Edit {
 					'min_capability' => isset( $_POST['min_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['min_capability'] ) ) : 'edit_pages',
 					'history_limit'  => isset( $_POST['history_limit'] ) ? max( 2, min( 40, (int) $_POST['history_limit'] ) ) : 12,
 					'workflow'       => ( isset( $_POST['workflow'] ) && 'direct' === $_POST['workflow'] ) ? 'direct' : 'stage',
+					'melden'         => isset( $_POST['melden'] ) ? 1 : 0,
 				)
 			);
 
@@ -471,6 +501,49 @@ class WP_AI_Edit {
 								<p class="description"><?php esc_html_e( 'Änderungen gehen direkt live. Sicherung vor jeder Änderung und Rücknahme bleiben erhalten.', 'wp-ai-edit' ); ?></p>
 							</fieldset>
 							<p class="description"><?php esc_html_e( 'Unabhängig davon kann der Nutzer im Chat „mach das direkt" sagen – dann wird die einzelne Änderung ohne Rückfrage angewendet. Umgekehrt fragt der Agent vorher, wenn er unsicher ist.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+				</table>
+
+				<h2><?php esc_html_e( 'Mitarbeit', 'wp-ai-edit' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Anmeldung', 'wp-ai-edit' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="melden" value="1" <?php checked( ! empty( $s['melden'] ) ); ?>>
+								<?php esc_html_e( 'Beim Aktivieren bei der GoMeetMe-Sammelstelle anmelden', 'wp-ai-edit' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'Übermittelt einmalig die Adresse der Website, die Administrator-E-Mail, die Plugin-Version und den Zeitpunkt an', 'wp-ai-edit' ); ?>
+								<code><?php echo esc_html( WP_AI_Edit_Meldung::endpunkt() ); ?></code>.
+								<?php esc_html_e( 'So sieht der Betreiber, wo das Plugin im Einsatz ist. Sonst wird nichts übertragen.', 'wp-ai-edit' ); ?>
+							</p>
+							<p class="description">
+								<?php
+								/* translators: %s: Konstante */
+								printf( esc_html__( 'Ganz abschalten lässt sich das in der wp-config.php mit %s.', 'wp-ai-edit' ), '<code>define( \'WPAIE_MELDUNG\', false );</code>' );
+								?>
+							</p>
+							<?php
+							$ergebnis = get_transient( 'wpaie_meldung_ergebnis' );
+							if ( $ergebnis ) {
+								delete_transient( 'wpaie_meldung_ergebnis' );
+								echo '<p><strong>' . esc_html( $ergebnis ) . '</strong></p>';
+							}
+							$letzte = WP_AI_Edit_Meldung::letzte();
+							if ( $letzte ) {
+								echo '<p>' . esc_html(
+									sprintf(
+										/* translators: 1: Zeitpunkt, 2: Ergebnis */
+										__( 'Zuletzt gemeldet: %1$s — %2$s', 'wp-ai-edit' ),
+										$letzte['zeit'] ?? '?',
+										$letzte['text'] ?? '?'
+									)
+								) . '</p>';
+							}
+							?>
+							<a class="button" href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'meldung_test', '1', menu_page_url( 'wp-ai-edit', false ) ), 'wpaie_meldung_test' ) ); ?>"><?php esc_html_e( 'Jetzt melden', 'wp-ai-edit' ); ?></a>
 						</td>
 					</tr>
 				</table>

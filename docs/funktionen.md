@@ -1,6 +1,6 @@
 # Funktionen — vollständige Referenz
 
-Stand: 2026-09-16 13:49:25 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.1
+Stand: 2026-09-16 15:48:52 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.2
 
 Diese Datei wird aus einer **laufenden Installation** erzeugt: die Fähigkeiten kommen
 aus `wp_get_abilities()`, die Routen aus dem REST-Server, die Modi aus `class-rest.php`.
@@ -321,6 +321,7 @@ Vom Chatfenster benutzt werden `/status`, `/chat`, `/reset` und die drei
 | `prompt_chat` | *(leer)* | Eigene Systemanweisung für den Nur-Lese-Modus; leer = mitgelieferte Datei |
 | `prompt_edit` | *(leer)* | Eigene Systemanweisung für den Bearbeitungsmodus; leer = mitgelieferte Datei |
 | `workflow` | `stage` | `stage` = erst vorschlagen, `direct` = sofort anwenden |
+| `melden` | `1` |  |
 | `bild_key` | *(wird beim Einrichten eingetragen)* | Schlüssel des Bilddienstes (WaveSpeed: `wsk_live_…`) |
 | `bild_modell` | `bytedance/seedream-v4.5` | Vorgabe: Seedream 4.5, Text zu Bild |
 | `bild_base` | `https://api.wavespeed.ai/api/v3` | Adresse der Bildschnittstelle |
@@ -434,6 +435,20 @@ Minimaler OpenAI-kompatibler Client mit Werkzeugaufrufen gegen die Abilities. Be
 
 *Dazu 2 interne Methoden.*
 
+### `class-meldung.php` — `WP_AI_Edit_Meldung`
+
+Meldung an die Sammelstelle admin.gomeetme.de. Beim Aktivieren meldet sich das Plugin einmalig bei der GoMeetMe-Sammelstelle an, damit der Betreiber sieht, wo es installiert ist. Gleiche Bauart wie bei den übrigen Plugins (Mistral Voice Agent, GoMeetMe, gomeetme-pro). Abschaltbar: Einstellungen → WP AI Edit → Mitarbeit, oder über die Konstante WPAIE_MELDUNG in wp-config.php. @package WP_AI_Edit / if ( ! defined( 'ABSPATH' ) ) { exit; } / Meldung bei der Sammelstelle.
+
+| Methode | Sichtbar | Zweck |
+|---|:--:|---|
+| `eingeschaltet()` | public | Meldung an die Sammelstelle admin.gomeetme.de. |
+| `endpunkt()` | public | Adresse der Sammelstelle, änderbar per Filter. |
+| `geheimnis()` | public | Geheimnis, änderbar per Filter oder Konstante. |
+| `melden()` | public | Meldet die Aktivierung. Wird beim Aktivieren des Plugins aufgerufen. |
+| `letzte()` | public | Zuletzt gemeldetes Ergebnis. |
+
+*Dazu 1 interne Methoden.*
+
 ### `class-rest.php` — `WP_AI_Edit_REST`
 
 REST-Schnittstelle des Widgets. Ausschließlich für angemeldete Nutzer. @package WP_AI_Edit / if ( ! defined( 'ABSPATH' ) ) { exit; } / Chat-Endpunkt im Backend.
@@ -472,7 +487,7 @@ Vorschlags-Schicht: Änderungen landen als Entwurf zur Bestätigung, können abe
 
 ### `wp-ai-edit.php` — `WP_AI_Edit`
 
-Plugin Name:       WP AI Edit Plugin URI:        https://gomeetme.de Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.1 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.1' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
+Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.2 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.2' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
 
 | Methode | Sichtbar | Zweck |
 |---|:--:|---|
@@ -480,6 +495,7 @@ Plugin Name:       WP AI Edit Plugin URI:        https://gomeetme.de Description
 | `prompt_standard()` | public | Eingebauter Standard-Prompt, falls weder Option noch Datei vorliegt. |
 | `settings()` | public | Einstellungen lesen. |
 | `update()` | public | Einstellungen schreiben. |
+| `meldung_test()` | public | Meldung an die Sammelstelle jetzt auslösen (?meldung_test=1). |
 | `bild_test()` | public | Verbindung und Guthaben des Bilddienstes prüfen (?bild_test=1). |
 | `menue()` | public | Einstellungsseite anlegen. |
 | `darf_sehen()` | public | Prueft, ob der aktuelle Nutzer das Widget sehen darf. |

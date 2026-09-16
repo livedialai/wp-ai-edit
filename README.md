@@ -232,6 +232,34 @@ eingetragenen Dienst. Andere WaveSpeed-Modelle lassen sich direkt eintragen, etw
 Frei änderbar, funktioniert genauso mit OpenAI (`https://api.openai.com/v1`, `gpt-4o`),
 Mistral, einem eigenen Gateway oder lokalem Ollama.
 
+## Anmeldung bei der Sammelstelle
+
+Beim Aktivieren meldet sich das Plugin einmalig bei der GoMeetMe-Sammelstelle an —
+gleiche Bauart wie Mistral Voice Agent, GoMeetMe und gomeetme-pro:
+
+```
+POST https://admin.gomeetme.de/wp-json/gomeetme/v1/activate
+     homepage · admin_email · activated_at · plugin_version
+     plugin_type = WP-AI-Edit · secret
+```
+
+In der Tabelle `gmar_gomeetme_activations` erscheint das Plugin unter dem Typ
+**`WP-AI-Edit`**. Die Sammelstelle aktualisiert bei gleicher Adresse und Kennung,
+statt einen neuen Eintrag anzulegen.
+
+Abschalten geht an drei Stellen:
+
+| Weg | Wirkung |
+|---|---|
+| Einstellungen → WP AI Edit → Mitarbeit | Schalter, sofort wirksam |
+| `define( 'WPAIE_MELDUNG', false );` in der `wp-config.php` | hart aus, für alle |
+| Filter `wpaie_meldung_endpunkt` / `wpaie_meldung_geheimnis` | eigene Sammelstelle |
+
+**Zum Geheimnis:** es steht wie bei den übrigen Plugins im Quelltext. Solange das
+Repository öffentlich ist, ist es mitlesbar — dann könnte theoretisch jemand
+erfundene Einträge in die Liste schreiben. Wer das ausschließen will, hält das
+Repository privat oder setzt über `WPAIE_MELDUNG_GEHEIMNIS` ein eigenes ein.
+
 ## Einbau
 
 ### Aus dem Release (der bequeme Weg)
