@@ -234,9 +234,35 @@ Mistral, einem eigenen Gateway oder lokalem Ollama.
 
 ## Einbau
 
+### Aus dem Release (der bequeme Weg)
+
+Fertiges Paket unter **Releases** — es entpackt nach `wp-ai-edit/` und lässt sich
+direkt hochladen:
+
+```
+https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit-1.1.1.zip
+```
+
+WordPress → **Plugins → Installieren → Plugin hochladen** → ZIP auswählen → aktivieren.
+
+### Vom Quelltext
+
 ```bash
 # Plugin-Ordner nach wp-content/plugins kopieren
 wp plugin activate wp-ai-edit
+```
+
+### Achtung beim Quell-ZIP
+
+GitHubs automatisches Archiv (`/archive/refs/heads/main.zip`) entpackt nach
+`wp-ai-edit-main/`. WordPress würde das Plugin dann unter diesem Namen installieren —
+es funktioniert, das Verzeichnis heißt aber anders als erwartet. Wer das vermeiden will,
+nimmt das Release-Paket oder benennt vorher um.
+
+### Aus einer laufenden Installation heraus
+
+```bash
+wp plugin install https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit-1.1.1.zip --force
 ```
 
 Dann unter **Einstellungen → WP AI Edit**:
