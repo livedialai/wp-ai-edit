@@ -247,6 +247,16 @@ In der Tabelle `gmar_gomeetme_activations` erscheint das Plugin unter dem Typ
 **`WP-AI-Edit`**. Die Sammelstelle aktualisiert bei gleicher Adresse und Kennung,
 statt einen neuen Eintrag anzulegen.
 
+Gemeldet wird auf **zwei** Wegen, damit keine Installation durchrutscht:
+
+| Weg | Auslöser |
+|---|---|
+| Aktivierungshaken | Neu installieren und aktivieren |
+| Versionsabgleich | Aufruf des Backends, wenn die laufende Version noch nicht gemeldet wurde — greift bei Updates und Netzwerkaktivierungen |
+
+Der Versionsabgleich merkt die Version **vor** dem Senden, sendet ohne auf die Antwort
+zu warten, und wiederholt sich daher nicht bei jedem Seitenaufbau.
+
 Abschalten geht an drei Stellen:
 
 | Weg | Wirkung |
