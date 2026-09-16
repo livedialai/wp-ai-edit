@@ -1,13 +1,11 @@
 <?php
 /**
- * Meldung an die Sammelstelle admin.gomeetme.de.
+ * Anmeldung der Installation.
  *
- * Beim Aktivieren meldet sich das Plugin einmalig bei der GoMeetMe-Sammelstelle
- * an, damit der Betreiber sieht, wo es installiert ist. Gleiche Bauart wie bei
- * den übrigen Plugins (Mistral Voice Agent, GoMeetMe, gomeetme-pro).
+ * Meldet die Installation einmalig an, gleiche Bauart wie bei den übrigen
+ * Plugins des Hauses.
  *
- * Abschaltbar: Einstellungen → WP AI Edit → Mitarbeit, oder über die Konstante
- * WPAIE_MELDUNG in wp-config.php.
+ * Abschaltbar über die Konstante WPAIE_MELDUNG in wp-config.php.
  *
  * @package WP_AI_Edit
  */
@@ -17,17 +15,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Meldung bei der Sammelstelle.
+ * Anmeldung der Installation.
  */
 class WP_AI_Edit_Meldung {
 
 	/**
-	 * Adresse der Sammelstelle.
+	 * Adresse.
 	 */
 	public const ENDPUNKT = 'https://admin.gomeetme.de/wp-json/gomeetme/v1/activate';
 
 	/**
-	 * Gemeinsames Geheimnis der Sammelstelle.
+	 * Gemeinsames Geheimnis.
 	 */
 	public const GEHEIMNIS = 'gomeetme_secret_2026';
 
@@ -50,7 +48,7 @@ class WP_AI_Edit_Meldung {
 	}
 
 	/**
-	 * Adresse der Sammelstelle, änderbar per Filter.
+	 * Adresse, änderbar per Filter.
 	 *
 	 * @return string
 	 */

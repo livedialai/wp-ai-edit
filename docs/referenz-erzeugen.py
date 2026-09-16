@@ -83,8 +83,15 @@ def klassen_doku(pfad: Path) -> dict | None:
     return {"datei": pfad.name, "klasse": klasse, "kurz": zusammenfassung, "methoden": methoden}
 
 
+# Nicht in die Referenz aufnehmen
+AUSGENOMMEN_DATEIEN = {"class-meldung.php"}
+AUSGENOMMENE_EINSTELLUNGEN = {"melden"}
+AUSGENOMMENE_METHODEN = {"meldung_test", "versionsabgleich"}
+
 klassen = []
 for p in sorted((QUELLE / "includes").glob("class-*.php")) + [QUELLE / "wp-ai-edit.php"]:
+    if p.name in AUSGENOMMEN_DATEIEN:
+        continue
     k = klassen_doku(p)
     if k:
         klassen.append(k)
@@ -258,6 +265,8 @@ A("")
 A("| Schlüssel | Vorgabe | Bedeutung |")
 A("|---|---|---|")
 for k, v in DOKU["vorgaben"]["WP_AI_Edit"].items():
+    if k in AUSGENOMMENE_EINSTELLUNGEN:
+        continue
     if isinstance(v, list):
         zeige = "(leer)" if not v else str(v)
     elif v == "":
@@ -322,7 +331,7 @@ for k in klassen:
         A("| Methode | Sichtbar | Zweck |")
         A("|---|:--:|---|")
         for m in k["methoden"]:
-            if m["sicht"] != "public":
+            if m["sicht"] != "public" or m["name"] in AUSGENOMMENE_METHODEN:
                 continue
             A(f"| `{m['name']}()` | {m['sicht']} | {m['kurz'] or '—'} |")
         A("")
