@@ -112,6 +112,31 @@ Der Agent kann Vorschläge auch selbst verwalten:
 | `kiedit/list-pending` | Offene Vorschläge |
 | `kiedit/apply-pending` | Vorschlag übernehmen |
 | `kiedit/discard-pending` | Vorschlag verwerfen |
+| `kiedit/get-page` | Titel, Status und vollständigen Block-Inhalt einer Seite lesen |
+| `kiedit/replace-text` | Einzelne Textstelle ersetzen, alles andere bleibt |
+| `kiedit/generate-image` | Bild aus Beschreibung erzeugen, in die Mediathek legen |
+| `kiedit/image-status` | Laufenden Bildauftrag abholen |
+
+## Bildgenerierung
+
+Unter *Einstellungen → WP AI Edit → Bildgenerierung* lassen sich Dienst, Schlüssel,
+Modell und Größe frei eintragen. Vorgabe ist **WaveSpeed** mit
+`bytedance/seedream-v4.5` (Seedream 4.5, Text zu Bild) in 2048×2048.
+
+```
+Nutzer: „Mach mir ein Foto von unserer Pizza für die Speisekarte"
+   ↓
+kiedit/generate-image  →  Auftrag an WaveSpeed
+   ↓  ~15–25 Sekunden
+Bild-URL  →  Download  →  Mediathek (Anhang-ID)
+   ↓
+Agent zeigt die URL und baut sie über einen Vorschlag in die Seite ein
+```
+
+Der Schlüssel liegt ausschließlich in der WordPress-Option und geht nur an den
+eingetragenen Dienst. Andere WaveSpeed-Modelle lassen sich direkt eintragen, etwa
+`bytedance/seedream-v5.0-pro`, `bytedance/seedream-v4` oder
+`wavespeed-ai/z-image/turbo`.
 
 ## Voraussetzungen
 

@@ -65,6 +65,300 @@ class WP_AI_Edit_Abilities {
 		self::snapshot();
 		self::rollback();
 		self::vorschlaege();
+		self::seiten_lesen();
+		self::bilder();
+	}
+
+	/**
+	 * Bildgenerierung über WaveSpeed.
+	 *
+	 * @return void
+	 */
+	protected static function bilder(): void {
+		wp_register_ability(
+			'kiedit/generate-image',
+			array(
+				'label'               => __( 'Bild erzeugen', 'wp-ai-edit' ),
+				'description'         => __( 'Erzeugt ein Bild aus einer Beschreibung und legt es in der Mediathek ab. Danach mit der zurückgegebenen URL oder Anhang-ID in einer Seite verwenden. Sinnvoll für Speisekarten, Stimmungsbilder, Produktfotos.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'prompt' => array( 'type' => 'string', 'description' => __( 'Bildbeschreibung. Je genauer — Motiv, Licht, Stil, Perspektive — desto besser das Ergebnis.', 'wp-ai-edit' ) ),
+						'titel'  => array( 'type' => 'string', 'description' => __( 'Titel und Alternativtext in der Mediathek.', 'wp-ai-edit' ) ),
+						'groesse' => array( 'type' => 'string', 'description' => __( 'Gewünschte Maße, z. B. 2048*2048. Leer lassen für die Standardgröße.', 'wp-ai-edit' ) ),
+						'modell' => array( 'type' => 'string', 'description' => __( 'Nur nötig, wenn ein anderes Modell als das eingestellte verwendet werden soll.', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'prompt' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_bild_erzeugen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'show_in_rest' => true ),
+			)
+		);
+
+		wp_register_ability(
+			'kiedit/image-status',
+			array(
+				'label'               => __( 'Bildauftrag abholen', 'wp-ai-edit' ),
+				'description'         => __( 'Holt einen noch laufenden Bildauftrag ab und legt das Ergebnis in die Mediathek. Nur nötig, wenn „Bild erzeugen" meldet, dass der Auftrag noch läuft.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'auftrag' => array( 'type' => 'string', 'description' => __( 'Auftrags-ID aus „Bild erzeugen".', 'wp-ai-edit' ) ),
+						'titel'   => array( 'type' => 'string' ),
+					),
+					'required'             => array( 'auftrag' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_bild_abholen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Bild erzeugen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_bild_erzeugen( $input = array() ) {
+		$prompt = trim( (string) ( $input['prompt'] ?? '' ) );
+		if ( '' === $prompt ) {
+			return new WP_Error( 'kiedit_prompt', __( 'Ohne Beschreibung kein Bild.', 'wp-ai-edit' ) );
+		}
+
+		$auftrag = WP_AI_Edit_Bild::erzeugen(
+			$prompt,
+			(string) ( $input['groesse'] ?? '' ),
+			(string) ( $input['modell'] ?? '' )
+		);
+		if ( is_wp_error( $auftrag ) ) {
+			return $auftrag;
+		}
+
+		self::protokoll( 'generate-image', mb_substr( $prompt, 0, 200 ), 'Auftrag ' . $auftrag );
+
+		return self::bild_abholen( $auftrag, (string) ( $input['titel'] ?? '' ) );
+	}
+
+	/**
+	 * Callback: noch laufenden Bildauftrag abholen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_bild_abholen( $input = array() ) {
+		$auftrag = sanitize_text_field( (string) ( $input['auftrag'] ?? '' ) );
+		if ( '' === $auftrag ) {
+			return new WP_Error( 'kiedit_auftrag', __( 'Auftrags-ID fehlt.', 'wp-ai-edit' ) );
+		}
+		return self::bild_abholen( $auftrag, (string) ( $input['titel'] ?? '' ) );
+	}
+
+	/**
+	 * Wartet auf das Ergebnis und legt es in die Mediathek.
+	 *
+	 * @param string $auftrag Auftrags-ID.
+	 * @param string $titel   Titel.
+	 * @return array|WP_Error
+	 */
+	protected static function bild_abholen( string $auftrag, string $titel = '' ) {
+		$url = WP_AI_Edit_Bild::warten( $auftrag, 45 );
+		if ( is_wp_error( $url ) ) {
+			return $url;
+		}
+
+		$anhang = WP_AI_Edit_Bild::in_mediathek( $url, $titel );
+		if ( is_wp_error( $anhang ) ) {
+			return $anhang;
+		}
+
+		$datei = get_attached_file( $anhang );
+		$maße  = $datei && file_exists( $datei ) ? wp_getimagesize( $datei ) : null;
+
+		return array(
+			'erzeugt'      => true,
+			'anhang_id'    => $anhang,
+			'url'          => wp_get_attachment_url( $anhang ),
+			'titel'        => get_the_title( $anhang ),
+			'breite'       => $maße ? $maße[0] : null,
+			'hoehe'        => $maße ? $maße[1] : null,
+			'mediathek'    => admin_url( 'upload.php?item=' . $anhang ),
+			'hinweis'      => __( 'Das Bild liegt in der Mediathek. Es ist auf keiner Seite eingebaut — das passiert erst über einen Vorschlag.', 'wp-ai-edit' ),
+		);
+	}
+
+	/**
+	 * Eine Seite auslesen und einzelne Textstellen ersetzen.
+	 *
+	 * @return void
+	 */
+	protected static function seiten_lesen(): void {
+		wp_register_ability(
+			'kiedit/get-page',
+			array(
+				'label'               => __( 'Seite auslesen', 'wp-ai-edit' ),
+				'description'         => __( 'Liefert Titel, Status, Link und den vollständigen Block-Inhalt einer Seite. Immer aufrufen, bevor du Inhalte änderst — sonst überschreibst du blind.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'id'   => array( 'type' => 'integer', 'description' => __( 'Seiten-ID aus „Website einlesen".', 'wp-ai-edit' ) ),
+						'slug' => array( 'type' => 'string', 'description' => __( 'Alternativ: der Slug der Seite.', 'wp-ai-edit' ) ),
+					),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_seite_lesen' ),
+				'permission_callback' => array( __CLASS__, 'darf_lesen' ),
+				'meta'                => array( 'readonly' => true, 'show_in_rest' => true ),
+			)
+		);
+
+		wp_register_ability(
+			'kiedit/replace-text',
+			array(
+				'label'               => __( 'Textstelle ersetzen', 'wp-ai-edit' ),
+				'description'         => __( 'Ersetzt eine genau bezeichnete Textstelle auf einer Seite und lässt alles andere unberührt. Das ist der sichere Weg für kleine Änderungen wie Öffnungszeiten, Preise oder Telefonnummern. Erst „Seite auslesen", dann diese Fähigkeit.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'id'       => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
+						'suchen'   => array( 'type' => 'string', 'description' => __( 'Die exakte Stelle, wie sie aktuell auf der Seite steht.', 'wp-ai-edit' ) ),
+						'ersetzen' => array( 'type' => 'string', 'description' => __( 'Der neue Text.', 'wp-ai-edit' ) ),
+						'alle'     => array( 'type' => 'boolean', 'description' => __( 'Auch weitere Vorkommen ersetzen. Standard: nur das erste.', 'wp-ai-edit' ) ),
+						'direkt'   => array( 'type' => 'boolean', 'description' => __( 'Nur setzen, wenn der Nutzer sofortige Änderung verlangt. Sonst leer lassen: wird als Vorschlag vorgelegt.', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'id', 'suchen', 'ersetzen' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_text_ersetzen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Seite auslesen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_seite_lesen( $input = array() ) {
+		$post = null;
+		if ( ! empty( $input['id'] ) ) {
+			$post = get_post( (int) $input['id'] );
+		} elseif ( ! empty( $input['slug'] ) ) {
+			$post = get_page_by_path( sanitize_title( (string) $input['slug'] ), OBJECT, array( 'page', 'post' ) );
+		}
+		if ( ! $post ) {
+			return new WP_Error( 'kiedit_unbekannt', __( 'Seite nicht gefunden.', 'wp-ai-edit' ) );
+		}
+
+		return array(
+			'id'      => (int) $post->ID,
+			'titel'   => $post->post_title,
+			'slug'    => $post->post_name,
+			'status'  => $post->post_status,
+			'link'    => get_permalink( $post->ID ),
+			'geaendert' => $post->post_modified,
+			'inhalt'  => $post->post_content,
+			'zeichen' => mb_strlen( $post->post_content ),
+			'bloecke' => count( array_filter( (array) parse_blocks( $post->post_content ), static fn( $b ) => ! empty( $b['blockName'] ) ) ),
+		);
+	}
+
+	/**
+	 * Callback: Textstelle ersetzen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_text_ersetzen( $input = array() ) {
+		$id     = (int) ( $input['id'] ?? 0 );
+		$suchen = (string) ( $input['suchen'] ?? '' );
+		$neu    = (string) ( $input['ersetzen'] ?? '' );
+		$post   = get_post( $id );
+
+		if ( ! $post ) {
+			return new WP_Error( 'kiedit_unbekannt', __( 'Seite nicht gefunden.', 'wp-ai-edit' ) );
+		}
+		if ( ! current_user_can( 'edit_post', $id ) ) {
+			return new WP_Error( 'kiedit_rechte', __( 'Keine Berechtigung für diese Seite.', 'wp-ai-edit' ) );
+		}
+		if ( '' === $suchen ) {
+			return new WP_Error( 'kiedit_suchen', __( 'Die zu ersetzende Stelle fehlt.', 'wp-ai-edit' ) );
+		}
+
+		$anzahl = substr_count( $post->post_content, $suchen );
+		if ( 0 === $anzahl ) {
+			return new WP_Error(
+				'kiedit_nicht_gefunden',
+				__( 'Diese Stelle steht nicht auf der Seite. Erst „Seite auslesen" und den Text genau übernehmen.', 'wp-ai-edit' )
+			);
+		}
+
+		$alle      = ! empty( $input['alle'] );
+		$geaendert = 0;
+
+		if ( $alle ) {
+			$inhalt_neu = str_replace( $suchen, $neu, $post->post_content );
+			$geaendert  = $anzahl;
+		} else {
+			$pos = strpos( $post->post_content, $suchen );
+			$inhalt_neu = substr_replace( $post->post_content, $neu, $pos, strlen( $suchen ) );
+			$geaendert  = 1;
+		}
+
+		$beschreibung = sprintf(
+			/* translators: 1: Seitentitel, 2: Anzahl, 3: alter Text, 4: neuer Text */
+			__( 'Auf „%1$s" %2$d Textstelle(n) ersetzen: „%3$s" → „%4$s"', 'wp-ai-edit' ),
+			$post->post_title,
+			$geaendert,
+			mb_substr( $suchen, 0, 60 ),
+			mb_substr( $neu, 0, 60 )
+		);
+
+		// Vorschlags-Modus.
+		if ( ! WP_AI_Edit_Workflow::direkt_erlaubt( $input ) ) {
+			$v = WP_AI_Edit_Workflow::einreihen(
+				'update-page',
+				array( 'id' => $id, 'titel' => $post->post_title ),
+				array( 'inhalt' => $inhalt_neu ),
+				array( 'inhalt' => $post->post_content ),
+				$beschreibung
+			);
+			return array(
+				'vorgeschlagen'    => true,
+				'vorschlag_id'     => $v['id'],
+				'vorschau'         => $v['vorschau'],
+				'nicht_angewendet' => true,
+				'stellen'          => $geaendert,
+				'beschreibung'     => $beschreibung,
+				'hinweis'          => __( 'Nur vorgeschlagen, nichts geändert. Der Nutzer bestätigt im Chat.', 'wp-ai-edit' ),
+			);
+		}
+
+		self::sicherung_anlegen( 'replace-text', $id, $post->post_content, $post->post_title );
+		$r = wp_update_post( array( 'ID' => $id, 'post_content' => $inhalt_neu ), true );
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+		self::protokoll( 'replace-text', $beschreibung, 'ok' );
+
+		return array(
+			'geaendert' => true,
+			'stellen'   => $geaendert,
+			'id'        => $id,
+			'link'      => get_permalink( $id ),
+			'beschreibung' => $beschreibung,
+		);
 	}
 
 	/**
@@ -191,6 +485,15 @@ class WP_AI_Edit_Abilities {
 	 *
 	 * @return bool
 	 */
+	/**
+	 * Lesen darf, wer Inhalte bearbeiten darf.
+	 *
+	 * @return bool
+	 */
+	public static function darf_lesen(): bool {
+		return current_user_can( 'edit_posts' ) || current_user_can( 'edit_pages' );
+	}
+
 	public static function darf_schreiben(): bool {
 		return current_user_can( 'edit_pages' ) && current_user_can( 'edit_posts' );
 	}

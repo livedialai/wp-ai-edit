@@ -29,6 +29,7 @@ class WP_AI_Edit_REST {
 			'kiedit/inspect-site',
 			'kiedit/list-plugins',
 			'kiedit/fetch-design',
+			'kiedit/get-page',
 			'core/get-site-info',
 		);
 	}
@@ -54,6 +55,10 @@ class WP_AI_Edit_REST {
 			'kiedit/list-pending',
 			'kiedit/apply-pending',
 			'kiedit/discard-pending',
+			'kiedit/get-page',
+			'kiedit/replace-text',
+			'kiedit/generate-image',
+			'kiedit/image-status',
 		);
 	}
 

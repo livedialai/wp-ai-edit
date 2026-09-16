@@ -183,6 +183,42 @@
 			} );
 	}
 
+	/**
+	 * Bild-URLs aus einer Antwort als Vorschau anzeigen.
+	 *
+	 * @param {string} text Antworttext.
+	 */
+	function zeigeBilder( text ) {
+		var muster = /https?:\/\/[^\s<>"')\]]+\.(?:jpe?g|png|webp|gif)(?:\?[^\s<>"')\]]*)?/gi;
+		var treffer = String( text ).match( muster );
+		if ( ! treffer ) {
+			return;
+		}
+		var gesehen = {};
+		treffer.slice( 0, 4 ).forEach( function ( u ) {
+			if ( gesehen[ u ] ) {
+				return;
+			}
+			gesehen[ u ] = 1;
+
+			var a = document.createElement( 'a' );
+			a.className = 'wpaie-bild';
+			a.href = u;
+			a.target = '_blank';
+			a.rel = 'noopener';
+
+			var img = document.createElement( 'img' );
+			// Kein loading="lazy": das Bild waere bis zum Laden 0 Pixel hoch,
+			// der Browser haelt es dann fuer unsichtbar und laedt es nie.
+			img.src = u;
+			img.alt = '';
+			a.appendChild( img );
+
+			log.appendChild( a );
+		} );
+		log.scrollTop = log.scrollHeight;
+	}
+
 	function frage( nachricht ) {
 		setzeStatus( 'denkt …', 'laden' );
 		send.disabled = true;
@@ -200,6 +236,7 @@
 				}
 				var antwort = res && res.antwort ? String( res.antwort ) : '(keine Antwort)';
 				anhaengen( antwort, 'assistant', antwort.length > 400 && antwort.trim().charAt( 0 ) === '{' );
+				zeigeBilder( antwort );
 				if ( res && res.vorschlaege && res.vorschlaege.length ) {
 					zeigeVorschlaege( res.vorschlaege );
 					setzeStatus( res.vorschlaege.length + ' Vorschlag/Vorschläge warten auf dich' );

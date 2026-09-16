@@ -3,7 +3,7 @@
  * Plugin Name:       WP AI Edit
  * Plugin URI:        https://gomeetme.de
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
- * Version:           1.0.0
+ * Version:           1.1.1
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Author:            Weser AI
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPAIE_VERSION', '1.0.0' );
+define( 'WPAIE_VERSION', '1.1.1' );
 define( 'WPAIE_FILE', __FILE__ );
 define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) );
@@ -49,6 +49,11 @@ class WP_AI_Edit {
 			'prompt_edit'    => '',
 			// Arbeitsweise: 'stage' = immer erst vorschlagen, 'direct' = sofort anwenden.
 			'workflow'       => 'stage',
+			// Bildgenerierung. Schlüssel bleibt leer — er gehört in die Option, nicht ins Repo.
+			'bild_key'       => '',
+			'bild_modell'    => 'bytedance/seedream-v4.5',
+			'bild_base'      => 'https://api.wavespeed.ai/api/v3',
+			'bild_groesse'   => '2048*2048',
 		);
 	}
 
@@ -97,6 +102,7 @@ class WP_AI_Edit {
 		require_once WPAIE_DIR . 'includes/class-inspector.php';
 		require_once WPAIE_DIR . 'includes/class-abilities.php';
 		require_once WPAIE_DIR . 'includes/class-workflow.php';
+		require_once WPAIE_DIR . 'includes/class-bild.php';
 		require_once WPAIE_DIR . 'includes/class-llm.php';
 		require_once WPAIE_DIR . 'includes/class-rest.php';
 
@@ -112,6 +118,37 @@ class WP_AI_Edit {
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		add_action( 'admin_footer', array( $this, 'widget' ) );
 		add_action( 'admin_notices', array( $this, 'hinweis_connector' ) );
+		add_action( 'admin_init', array( $this, 'bild_test' ) );
+	}
+
+	/**
+	 * Verbindung und Guthaben des Bilddienstes prüfen (?bild_test=1).
+	 *
+	 * @return void
+	 */
+	public function bild_test(): void {
+		if ( ! isset( $_GET['bild_test'] ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		check_admin_referer( 'wpaie_bild_test' );
+
+		$r = WP_AI_Edit_Bild::guthaben();
+		if ( is_wp_error( $r ) ) {
+			$text = 'Fehler: ' . $r->get_error_message();
+		} else {
+			$text = sprintf(
+				'Verbindung steht. Modell %s · Guthaben %s',
+				(string) $r['modell'],
+				null === $r['guthaben'] ? 'unbekannt' : number_format_i18n( (float) $r['guthaben'], 2 ) . ' $'
+			);
+		}
+
+		set_transient( 'wpaie_bild_test', $text, 60 );
+		wp_safe_redirect( add_query_arg( 'page', 'wp-ai-edit', admin_url( 'options-general.php' ) ) );
+		exit;
 	}
 
 	/**
@@ -267,6 +304,15 @@ class WP_AI_Edit {
 				)
 			);
 
+			self::update(
+				array(
+					'bild_key'     => isset( $_POST['bild_key'] ) ? sanitize_text_field( wp_unslash( $_POST['bild_key'] ) ) : '',
+					'bild_modell'  => isset( $_POST['bild_modell'] ) ? sanitize_text_field( wp_unslash( $_POST['bild_modell'] ) ) : '',
+					'bild_base'    => isset( $_POST['bild_base'] ) ? esc_url_raw( wp_unslash( $_POST['bild_base'] ) ) : '',
+					'bild_groesse' => isset( $_POST['bild_groesse'] ) ? sanitize_text_field( wp_unslash( $_POST['bild_groesse'] ) ) : '',
+				)
+			);
+
 			// Prompts: leeres Feld setzt auf die mitgelieferte Fassung zurueck.
 			$prompt_chat = isset( $_POST['prompt_chat'] ) ? wp_kses_post( wp_unslash( $_POST['prompt_chat'] ) ) : '';
 			$prompt_edit = isset( $_POST['prompt_edit'] ) ? wp_kses_post( wp_unslash( $_POST['prompt_edit'] ) ) : '';
@@ -360,6 +406,57 @@ class WP_AI_Edit {
 				<textarea name="prompt_chat" rows="10" class="large-text code" spellcheck="false"><?php echo esc_textarea( $chat ); ?></textarea>
 				<h3><?php esc_html_e( 'Bearbeitungsmodus (/editsite)', 'wp-ai-edit' ); ?></h3>
 				<textarea name="prompt_edit" rows="24" class="large-text code" spellcheck="false"><?php echo esc_textarea( $edit ); ?></textarea>
+
+				<h2><?php esc_html_e( 'Bildgenerierung', 'wp-ai-edit' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="bild_base"><?php esc_html_e( 'Dienst', 'wp-ai-edit' ); ?></label></th>
+						<td>
+							<input type="text" class="regular-text code" id="bild_base" name="bild_base" value="<?php echo esc_attr( $s['bild_base'] ); ?>" placeholder="https://api.wavespeed.ai/api/v3">
+							<p class="description"><?php esc_html_e( 'Adresse der Schnittstelle. WaveSpeed: https://api.wavespeed.ai/api/v3 — jeder andere kompatible Dienst geht auch.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="bild_key"><?php esc_html_e( 'Schlüssel', 'wp-ai-edit' ); ?></label></th>
+						<td>
+							<input type="password" class="regular-text code" id="bild_key" name="bild_key" value="<?php echo esc_attr( $s['bild_key'] ); ?>" autocomplete="off" placeholder="wsk_live_…">
+							<p class="description"><?php esc_html_e( 'Wird nur in der Datenbank gespeichert und ausschließlich an den oben genannten Dienst gesendet.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="bild_modell"><?php esc_html_e( 'Modell', 'wp-ai-edit' ); ?></label></th>
+						<td>
+							<input type="text" class="regular-text code" id="bild_modell" name="bild_modell" value="<?php echo esc_attr( $s['bild_modell'] ); ?>" placeholder="bytedance/seedream-v4.5">
+							<p class="description">
+								<?php esc_html_e( 'Vorgabe: Seedream 4.5, Text zu Bild. Alternativen bei WaveSpeed:', 'wp-ai-edit' ); ?>
+								<code>bytedance/seedream-v5.0-pro</code> (<?php esc_html_e( 'Design und dichte Layouts', 'wp-ai-edit' ); ?>),
+								<code>bytedance/seedream-v4</code> (<?php esc_html_e( 'Illustration, vielseitige Stile', 'wp-ai-edit' ); ?>),
+								<code>wavespeed-ai/z-image/turbo</code> (<?php esc_html_e( 'schnell und günstig für Mengen', 'wp-ai-edit' ); ?>).
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="bild_groesse"><?php esc_html_e( 'Größe', 'wp-ai-edit' ); ?></label></th>
+						<td>
+							<input type="text" class="regular-text code" id="bild_groesse" name="bild_groesse" value="<?php echo esc_attr( $s['bild_groesse'] ); ?>" placeholder="2048*2048">
+							<p class="description"><?php esc_html_e( 'Maße als BREITE*HÖHE. Seedream 4.5 kann bis 8192*8192.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Prüfen', 'wp-ai-edit' ); ?></th>
+						<td>
+							<a class="button" href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'bild_test', '1', menu_page_url( 'wp-ai-edit', false ) ), 'wpaie_bild_test' ) ); ?>"><?php esc_html_e( 'Verbindung und Guthaben prüfen', 'wp-ai-edit' ); ?></a>
+							<?php
+							$test = get_transient( 'wpaie_bild_test' );
+							if ( $test ) {
+								delete_transient( 'wpaie_bild_test' );
+								echo '<p><strong>' . esc_html( $test ) . '</strong></p>';
+							}
+							?>
+							<p class="description"><?php esc_html_e( 'Der Agent kann Bilder über die Fähigkeit „Bild erzeugen" anlegen. Sie landen in der Mediathek und werden erst über einen Vorschlag in eine Seite eingebaut.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+				</table>
 
 				<h2><?php esc_html_e( 'Arbeitsweise', 'wp-ai-edit' ); ?></h2>
 				<table class="form-table" role="presentation">

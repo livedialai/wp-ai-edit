@@ -170,6 +170,31 @@
 	white-space: pre;
 }
 
+/* Erzeugte Bilder */
+.wpaie-bild {
+	display: block;
+	align-self: stretch;
+	border-radius: 10px;
+	overflow: hidden;
+	border: 1px solid #dcdcde;
+	line-height: 0;
+}
+
+.wpaie-bild {
+	min-height: 90px;
+	background: #f0f0f1;
+}
+
+.wpaie-bild img {
+	width: 100%;
+	height: auto;
+	display: block;
+}
+
+.wpaie-bild:hover {
+	border-color: #2271b1;
+}
+
 /* Tipp-Animation */
 .wpaie-tippt {
 	display: flex;
