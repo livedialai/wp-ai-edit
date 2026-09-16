@@ -1,4 +1,4 @@
-# WP AI Edit (v1)
+# WP AI Edit (v1.1.1)
 
 KI-Chat **im WordPress-Backend**, der die Website bearbeitet. Erscheint als
 schwebendes Widget unten rechts in wp-admin — auf der öffentlichen Website
@@ -13,19 +13,25 @@ existiert er nicht.
 | Plugins | `install-plugin`, `toggle-plugin`, `set-plugin-setting`, `list-plugins` |
 | Design-Vorlagen | `fetch-design` – liest fremde Seiten und extrahiert Farben, Schriften, Aufbau |
 | Sicherheit | `snapshot` vor jeder Änderung, `rollback` zum Zurücksetzen |
-| Lesen | `inspect-site` – Identität, Theme, Seiten, Menüs, Plugins |
+| Lesen | `inspect-site` – Identität, Theme, Seiten, Menüs, Plugins; `get-page` für den vollen Seiteninhalt |
+| Kleine Änderungen | `replace-text` – ersetzt eine Textstelle, alles andere bleibt unberührt |
+| Bilder | `generate-image` – Bild aus Beschreibung erzeugen, in die Mediathek legen |
+| Vorschläge | `list-pending`, `apply-pending`, `discard-pending` |
 
 ## Aufbau
 
 ```
-wp-ai-edit.php              Hauptdatei: Hooks, Backend-Only, Einstellungen
-includes/class-abilities.php  13 Fähigkeiten über die WordPress Abilities API
-includes/class-rest.php       REST-Routen /chat /reset /status
-includes/class-inspector.php  Design-Extraktion fremder Seiten
-assets/js/widget.js           Chat-Oberfläche
-assets/css/widget.css         Sprechblase und Panel
-prompts/chat.md               Systemanweisung Nur-Lese-Modus
-prompts/editsite.md           Systemanweisung Bearbeitungsmodus
+wp-ai-edit.php                  Hauptdatei: Hooks, Backend-Only, Einstellungen
+includes/class-abilities.php    18 Fähigkeiten über die WordPress Abilities API
+includes/class-rest.php         REST-Routen /chat /reset /status /pending
+includes/class-inspector.php    Design-Extraktion fremder Seiten
+includes/class-workflow.php     Vorschläge, Vorschau, Übernehmen, Verwerfen
+includes/class-bild.php         Bildgenerierung über WaveSpeed
+includes/class-llm.php          OpenAI-kompatibler Client mit Werkzeugaufrufen
+assets/js/widget.js             Chat-Oberfläche, Vorschlagskarten, Bildvorschau
+assets/css/widget.css           Sprechblase, Panel, Karten
+prompts/chat.md                 Systemanweisung Nur-Lese-Modus
+prompts/editsite.md             Systemanweisung Bearbeitungsmodus
 ```
 
 ## Warum es auf der Website nicht existiert
@@ -116,6 +122,52 @@ Der Agent kann Vorschläge auch selbst verwalten:
 | `kiedit/replace-text` | Einzelne Textstelle ersetzen, alles andere bleibt |
 | `kiedit/generate-image` | Bild aus Beschreibung erzeugen, in die Mediathek legen |
 | `kiedit/image-status` | Laufenden Bildauftrag abholen |
+
+## Seiten lesen und einzeln ändern
+
+**Der wichtigste Grundsatz:** `update-page` ersetzt den **kompletten** Seiteninhalt. Ohne
+den aktuellen Text vorher zu kennen, würde ein Schreibversuch die Seite leeren. Deshalb
+gilt im Prompt: erst `get-page`, dann schreiben.
+
+```
+kiedit/get-page     →  Titel, Status, Link, vollständiger Block-Inhalt, Zeichenzahl,
+                       Blockzahl, und ob die Seite überhaupt über WordPress
+                       bearbeitbar ist
+```
+
+Für typische Kundenwünsche — Öffnungszeiten, Preise, Telefonnummer, ein Wort im Text —
+ist `replace-text` das richtige Werkzeug:
+
+```json
+{ "id": 61, "suchen": "Unsere Speisekarte", "ersetzen": "Speisekarte 2026" }
+```
+
+Es zählt die Vorkommen, ersetzt standardmäßig nur das erste und lässt alles andere
+unberührt. Findet es die Stelle nicht, bricht es mit einem klaren Hinweis ab, statt
+irgendwo zu schreiben. Im Test: 1373 → 1371 Zeichen, weil der neue Text zwei Zeichen
+kürzer war — und Tiramisù, Pizza Marinara und der restliche Inhalt blieben unverändert.
+
+Beide Wege laufen durch den Vorschlagsmechanismus, nicht direkt auf die Seite.
+
+## Seiten mit Elementor, Divi und anderen Seitenbauern
+
+Seitenbauer speichern ihre Inhalte **nicht** im WordPress-Inhalt, sondern in eigenen
+Feldern. Ein Schreibversuch dort wäre wirkungslos: die Datenbankänderung passiert, die
+Seite sieht aber unverändert aus.
+
+Das Plugin erkennt das und **verweigert die Arbeit** statt stumm zu versagen —
+`get-page` meldet im Feld `bearbeitbar`, um welchen Seitenbauer es geht:
+
+| Seitenbauer | Erkennungsmerkmal |
+|---|---|
+| Elementor | `_elementor_edit_mode` = `builder` |
+| Divi | `_et_pb_use_builder` = `on` |
+| WPBakery / Visual Composer | `_wpb_vc_js_status` = `true` |
+| Bricks | `_bricks_page_content_2` gefüllt |
+| Oxygen | `ct_builder_shortcodes` gefüllt |
+
+`update-page` und `replace-text` liefern dann einen Fehler mit Klartext, und der Agent
+sagt dem Nutzer, dass diese Seite nur im Seitenbauer selbst geändert werden kann.
 
 ## Bildgenerierung
 
@@ -223,20 +275,49 @@ Rolle darf — die Prüfung passiert pro Fähigkeit in `permission_callback`.
 Private und reservierte IP-Bereiche sind gesperrt, damit der Server nicht als
 Sonde ins interne Netz benutzt werden kann.
 
-## Getestet auf test.pizzafamily.site (WP 7.1, PHP 8.2)
+## Getestet
+
+**test.pizzafamily.site** (WP 7.1, PHP 8.2):
 
 | Prüfung | Ergebnis |
 |---|---|
-| 11 Fähigkeiten registriert | ✅ |
+| 18 Fähigkeiten registriert | ✅ |
 | Verbindung zu DeepSeek `deepseek-flash` | ✅ antwortet |
 | Werkzeugkreislauf (Modell ruft Fähigkeit, Ergebnis zurück) | ✅ |
-| `inspect-site` über den Chat | ✅ Titel, Theme, 31 Seiten, Plugins |
-| `fetch-design` auf gofonia.de | ✅ Farben, Schriften, Aufbau |
-| `create-page` über den Chat | ✅ Seite 2642 als Entwurf angelegt |
+| `inspect-site`, `fetch-design` auf gofonia.de | ✅ Farben, Schriften, Aufbau |
+| `create-page` mit Gutenberg-Markup | ✅ 12 Blöcke, fehlerfrei geparst |
+| Schreibversuch ohne `direkt=true` | ✅ nur Vorschlag, Seite unverändert |
+| Vorschau-Link ohne Anmeldung | ✅ HTTP 403 |
+| Vorschau-Link mit Anmeldung | ✅ rendert die neue Fassung |
+| Vorschlag übernehmen | ✅ Inhalt geändert, Vorschlagsliste leer |
+| `replace-text` zeichengenau | ✅ 1373 → 1371, Rest erhalten |
+| `generate-image` | ✅ 14 s, 2048×2048, Anhang in der Mediathek |
+| Bild im Chat sichtbar | ✅ 413×413 gerendert |
+| Seitenbauer-Erkennung (5 Systeme) | ✅ erkannt, Schreiben verweigert |
 | Rechteprüfung ohne Anmeldung | ✅ abgelehnt |
-| Widget nur im Backend | ✅ Frontend nicht sichtbar |
 
-## Grenzen von v1
+**starfood.pizza** (WP 7.1, PHP 8.4, WooCommerce-Shop, 89 Produkte):
+
+| Prüfung | Ergebnis |
+|---|---|
+| Plugin installiert und aktiv | ✅ |
+| 18 Fähigkeiten registriert | ✅ |
+| Frontend unberührt (Startseite, /shop/, /warenkorb/) | ✅ HTTP 200, 0 Vorkommen |
+| Widget im Backend | ✅ sichtbar, `widget.js` v1.1.1 |
+| Live-Frage über den Chat | ✅ 89 Gerichte gezählt, 8 aktive Plugins gelistet |
+
+## Grenzen
+
+- **Kein Ersatz für einen Seitenbauer.** Elementor, Divi und Verwandte bauen Seiten
+  visuell mit sofortiger Rückmeldung. Ein Chat ist die falsche Oberfläche, um einen
+  Rahmen um drei Pixel zu verschieben. Das Werkzeug ersetzt nicht den Baukasten, sondern
+  **den Anruf bei der Agentur** für kleine Änderungen an bestehenden Seiten.
+- **Seiten von Seitenbauern sind nicht bearbeitbar** (siehe oben). Das ist Absicht.
+- **Die Gestaltung bleibt Handarbeit.** Strukturell korrektes Block-Markup ist nicht
+  dasselbe wie gutes Design. Die Gutenberg-Referenz im Prompt ist wichtiger als die
+  Modellwahl.
+
+### Technische Grenzen von v1
 
 - Das Theme auf der Testinstallation (`pizzafamily`) ist **kein Block-Theme**.
   Deshalb wirken Design-Änderungen über Seiteninhalte, Menüs und Theme-Optionen.

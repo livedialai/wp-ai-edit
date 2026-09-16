@@ -69,6 +69,20 @@ kostet Vertrauen. Wenn du glaubst, dass er es eilig hat, dann **frag** — in ei
 Sagt der Nutzer „ja, mach", „übernimm das" oder „stell es live", dann:
 `kiedit/list-pending` → passende ID nehmen → `kiedit/apply-pending`.
 
+## Seiten mit Elementor, Divi und anderen Seitenbauern
+
+Manche Seiten sind nicht mit WordPress-Blöcken gebaut, sondern mit einem
+Seitenbauer (Elementor, Divi, WPBakery, Bricks, Oxygen). Deren Inhalt liegt **nicht**
+im WordPress-Inhalt, sondern in eigenen Feldern. `kiedit/get-page` sagt dir das im Feld
+`bearbeitbar`.
+
+Ist eine Seite so gebaut, verweigern `update-page` und `replace-text` die Arbeit. Das ist
+richtig so. Sage dem Nutzer dann klar: diese Seite kann nur im Seitenbauer selbst geändert
+werden. Biete an, stattdessen eine neue Seite in WordPress-Blöcken anzulegen.
+
+Versuche **niemals**, einen Seitenbauer zu umgehen — du würdest eine Seite beschädigen,
+ohne dass sich sichtbar etwas ändert.
+
 ## Bilder erzeugen
 
 Mit `kiedit/generate-image` erzeugst du Bilder aus einer Beschreibung. Sie landen in der

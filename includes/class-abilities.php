@@ -245,6 +245,68 @@ class WP_AI_Edit_Abilities {
 	}
 
 	/**
+	 * Prüft, ob eine Seite mit einem Seitenbauer (Elementor, Divi, WPBakery)
+	 * gebaut ist. Deren Inhalte liegen NICHT in post_content, sondern in eigenen
+	 * Feldern — Schreibversuche dort wären wirkungslos.
+	 *
+	 * @param int $id Seiten-ID.
+	 * @return string Name des Seitenbauers oder leer.
+	 */
+	public static function seitenbauer( int $id ): string {
+		$post = get_post( $id );
+		if ( ! $post ) {
+			return '';
+		}
+
+		// Elementor
+		if ( 'builder' === get_post_meta( $id, '_elementor_edit_mode', true ) ) {
+			return 'Elementor';
+		}
+		// Divi
+		if ( 'on' === get_post_meta( $id, '_et_pb_use_builder', true ) ) {
+			return 'Divi';
+		}
+		// WPBakery / Visual Composer
+		if ( 'true' === get_post_meta( $id, '_wpb_vc_js_status', true ) ) {
+			return 'WPBakery';
+		}
+		// Bricks (Wert ist ein Array)
+		$bricks = get_post_meta( $id, '_bricks_page_content_2', true );
+		if ( ! empty( $bricks ) ) {
+			return 'Bricks';
+		}
+		// Oxygen
+		$oxygen = get_post_meta( $id, 'ct_builder_shortcodes', true );
+		if ( ! empty( $oxygen ) ) {
+			return 'Oxygen';
+		}
+
+		return '';
+	}
+
+	/**
+	 * Meldung, wenn eine Seite mit einem Seitenbauer gebaut ist.
+	 *
+	 * @param int    $id   Seiten-ID.
+	 * @param string $name Name des Seitenbauers.
+	 * @return WP_Error
+	 */
+	protected static function bauer_fehler( int $id, string $name ): WP_Error {
+		return new WP_Error(
+			'kiedit_seitenbauer',
+			sprintf(
+				/* translators: 1: Name des Seitenbauers, 2: Seiten-ID */
+				__(
+					'Diese Seite ist mit %1$s gebaut (ID %2$d). Ihr Inhalt liegt nicht im WordPress-Inhalt, sondern in eigenen Feldern. Ein Schreibversuch hier würde nichts bewirken und die Seite nur beschädigen. Sage dem Nutzer, dass diese Seite nicht über WordPress-Inhalte bearbeitbar ist — er muss sie in %1$s selbst ändern.',
+					'wp-ai-edit'
+				),
+				$name,
+				$id
+			)
+		);
+	}
+
+	/**
 	 * Callback: Seite auslesen.
 	 *
 	 * @param array $input Eingabe.
@@ -271,6 +333,10 @@ class WP_AI_Edit_Abilities {
 			'inhalt'  => $post->post_content,
 			'zeichen' => mb_strlen( $post->post_content ),
 			'bloecke' => count( array_filter( (array) parse_blocks( $post->post_content ), static fn( $b ) => ! empty( $b['blockName'] ) ) ),
+			'seitenbauer' => self::seitenbauer( (int) $post->ID ),
+			'bearbeitbar' => '' === self::seitenbauer( (int) $post->ID )
+				? __( 'ja, der Inhalt liegt in WordPress', 'wp-ai-edit' )
+				: __( 'NEIN — diese Seite wird von einem Seitenbauer verwaltet. Nicht über update-page oder replace-text bearbeiten.', 'wp-ai-edit' ),
 		);
 	}
 
@@ -294,6 +360,11 @@ class WP_AI_Edit_Abilities {
 		}
 		if ( '' === $suchen ) {
 			return new WP_Error( 'kiedit_suchen', __( 'Die zu ersetzende Stelle fehlt.', 'wp-ai-edit' ) );
+		}
+
+		$bauer = self::seitenbauer( $id );
+		if ( '' !== $bauer ) {
+			return self::bauer_fehler( $id, $bauer );
 		}
 
 		$anzahl = substr_count( $post->post_content, $suchen );
@@ -692,6 +763,11 @@ class WP_AI_Edit_Abilities {
 		}
 		if ( '' === trim( $inhalt ) ) {
 			return new WP_Error( 'kiedit_leer', __( 'Der neue Inhalt ist leer. Abbruch, um nichts zu überschreiben.', 'wp-ai-edit' ) );
+		}
+
+		$bauer = self::seitenbauer( $id );
+		if ( '' !== $bauer ) {
+			return self::bauer_fehler( $id, $bauer );
 		}
 
 		// Vorschlags-Modus: nicht anwenden, sondern zur Bestätigung vorlegen.
