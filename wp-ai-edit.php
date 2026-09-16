@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       WP AI Edit
- * Plugin URI:        https://gomeetme.de
+ * Plugin URI:        https://github.com/livedialai/wp-ai-edit
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
  * Version:           1.1.1
  * Requires at least: 6.9
