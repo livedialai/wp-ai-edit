@@ -237,11 +237,14 @@ Mistral, einem eigenen Gateway oder lokalem Ollama.
 ### Aus dem Release (der bequeme Weg)
 
 Fertiges Paket unter **Releases** — es entpackt nach `wp-ai-edit/` und lässt sich
-direkt hochladen:
+direkt hochladen. Dieser Link bleibt gültig und zeigt immer auf die neueste Fassung:
 
 ```
-https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit-1.1.1.zip
+https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit.zip
 ```
+
+Dieselbe Datei liegt zusätzlich mit Versionsnummer im Namen daneben
+(`wp-ai-edit-1.1.1.zip`), wenn du eine bestimmte Fassung festhalten willst.
 
 WordPress → **Plugins → Installieren → Plugin hochladen** → ZIP auswählen → aktivieren.
 
@@ -262,7 +265,7 @@ nimmt das Release-Paket oder benennt vorher um.
 ### Aus einer laufenden Installation heraus
 
 ```bash
-wp plugin install https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit-1.1.1.zip --force
+wp plugin install https://github.com/livedialai/wp-ai-edit/releases/latest/download/wp-ai-edit.zip --force
 ```
 
 Dann unter **Einstellungen → WP AI Edit**:
