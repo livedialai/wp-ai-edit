@@ -1,0 +1,897 @@
+<?php
+/**
+ * Registrierung der Fähigkeiten (Abilities) für WP AI Edit.
+ *
+ * @package WP_AI_Edit
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Stellt alle Fähigkeiten bereit, die das Modell aufrufen darf.
+ */
+class WP_AI_Edit_Abilities {
+
+	/**
+	 * Erlaubte Optionen, die das Modell ändern darf.
+	 *
+	 * @return array
+	 */
+	public static function erlaubte_optionen(): array {
+		return array(
+			'blogname'        => 'string',
+			'blogdescription' => 'string',
+			'admin_email'     => 'string',
+			'posts_per_page'  => 'integer',
+			'blog_public'     => 'integer',
+			'date_format'     => 'string',
+			'time_format'     => 'string',
+			'start_of_week'   => 'integer',
+		);
+	}
+
+	/**
+	 * Kategorien registrieren.
+	 *
+	 * @return void
+	 */
+	public static function kategorien(): void {
+		wp_register_ability_category(
+			'kiedit',
+			array(
+				'label'       => __( 'Website-Editor (KI)', 'wp-ai-edit' ),
+				'description' => __( 'Fähigkeiten, mit denen ein Sprachmodell Inhalte, Einstellungen und Plugins dieser Website bearbeitet.', 'wp-ai-edit' ),
+			)
+		);
+	}
+
+	/**
+	 * Alle Fähigkeiten registrieren.
+	 *
+	 * @return void
+	 */
+	public static function registrieren(): void {
+		self::site_einlesen();
+		self::seite_schreiben();
+		self::seite_anlegen();
+		self::optionen_setzen();
+		self::plugins_auflisten();
+		self::plugin_installieren();
+		self::plugin_aktivieren();
+		self::plugin_option_setzen();
+		self::design_einlesen();
+		self::snapshot();
+		self::rollback();
+	}
+
+	/**
+	 * Prüft die Grundberechtigung für schreibende Fähigkeiten.
+	 *
+	 * Muss public sein: die Registrierung ruft den Callback von außerhalb
+	 * der Klasse auf, ein protected/private Callback wird abgelehnt.
+	 *
+	 * @return bool
+	 */
+	public static function darf_schreiben(): bool {
+		return current_user_can( 'edit_pages' ) && current_user_can( 'edit_posts' );
+	}
+
+	/**
+	 * Name der aktuellen Fähigkeit (für Protokollierung).
+	 *
+	 * @param string $name Fähigkeitsname.
+	 * @return void
+	 */
+	protected static function protokoll( string $name, $eingabe, $ergebnis ): void {
+		$log = get_option( 'wp_ai_edit_log', array() );
+		if ( ! is_array( $log ) ) {
+			$log = array();
+		}
+		array_unshift(
+			$log,
+			array(
+				'zeit'    => current_time( 'mysql' ),
+				'nutzer'  => get_current_user_id(),
+				'ability' => $name,
+				'eingabe' => wp_json_encode( $eingabe ),
+				'status'  => is_wp_error( $ergebnis ) ? 'fehler' : 'ok',
+			)
+		);
+		update_option( 'wp_ai_edit_log', array_slice( $log, 0, 200 ), false );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 1. Website einlesen                                                 */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Fähigkeit: Website-Zustand als kompaktes JSON.
+	 *
+	 * @return void
+	 */
+	protected static function site_einlesen(): void {
+		wp_register_ability(
+			'kiedit/inspect-site',
+			array(
+				'label'               => __( 'Website einlesen', 'wp-ai-edit' ),
+				'description'         => __( 'Liefert den aktuellen Zustand der Website: Identität, Theme, Seiten mit IDs und Auszügen, Menüs, aktive Plugins. Vor jeder Änderung aufrufen.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'bereiche' => array(
+							'type'        => 'array',
+							'items'       => array( 'type' => 'string', 'enum' => array( 'identitaet', 'theme', 'seiten', 'menues', 'plugins' ) ),
+							'description' => __( 'Optional: nur diese Bereiche zurückgeben.', 'wp-ai-edit' ),
+						),
+					),
+					'additionalProperties' => false,
+					'default'              => array(),
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_site_einlesen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'readonly' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Website einlesen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array
+	 */
+	public static function cb_site_einlesen( $input = array() ): array {
+		$bereiche = isset( $input['bereiche'] ) && is_array( $input['bereiche'] ) ? $input['bereiche'] : array();
+		$alle     = empty( $bereiche );
+		$out      = array();
+
+		if ( $alle || in_array( 'identitaet', $bereiche, true ) ) {
+			$out['identitaet'] = array(
+				'titel'       => get_option( 'blogname' ),
+				'beschreibung' => get_option( 'blogdescription' ),
+				'url'         => home_url(),
+				'sprache'     => get_locale(),
+			);
+		}
+
+		if ( $alle || in_array( 'theme', $bereiche, true ) ) {
+			$theme              = wp_get_theme();
+			$out['theme']       = array(
+				'name'        => $theme->get( 'Name' ),
+				'version'     => $theme->get( 'Version' ),
+				'block_theme' => $theme->is_block_theme(),
+				'stylesheet'  => get_stylesheet(),
+			);
+		}
+
+		if ( $alle || in_array( 'seiten', $bereiche, true ) ) {
+			$seiten = get_posts(
+				array(
+					'post_type'      => array( 'page', 'post' ),
+					'post_status'    => array( 'publish', 'draft' ),
+					'numberposts'    => 30,
+					'orderby'        => 'menu_order date',
+					'order'          => 'ASC',
+				)
+			);
+			$liste  = array();
+			foreach ( $seiten as $p ) {
+				$liste[] = array(
+					'id'      => $p->ID,
+					'typ'     => $p->post_type,
+					'status'  => $p->post_status,
+					'titel'   => $p->post_title,
+					'slug'    => $p->post_name,
+					'auszug'  => mb_substr( wp_strip_all_tags( $p->post_content ), 0, 220 ),
+					'zeichen' => mb_strlen( $p->post_content ),
+				);
+			}
+			$out['seiten'] = $liste;
+		}
+
+		if ( $alle || in_array( 'menues', $bereiche, true ) ) {
+			$menues = wp_get_nav_menus();
+			$liste  = array();
+			foreach ( $menues as $m ) {
+				$items = wp_get_nav_menu_items( $m->term_id );
+				$liste[] = array(
+					'id'    => $m->term_id,
+					'name'  => $m->name,
+					'punkte' => is_array( $items ) ? array_map(
+						static function ( $i ) {
+							return array( 'titel' => $i->title, 'url' => $i->url );
+						},
+						$items
+					) : array(),
+				);
+			}
+			$out['menues'] = $liste;
+		}
+
+		if ( $alle || in_array( 'plugins', $bereiche, true ) ) {
+			$out['plugins'] = self::plugins_daten();
+		}
+
+		return $out;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 2. Seiten schreiben                                                 */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Fähigkeit: bestehende Seite aktualisieren.
+	 *
+	 * @return void
+	 */
+	protected static function seite_schreiben(): void {
+		wp_register_ability(
+			'kiedit/update-page',
+			array(
+				'label'               => __( 'Seite aktualisieren', 'wp-ai-edit' ),
+				'description'         => __( 'Ersetzt den Inhalt einer bestehenden Seite. Der Inhalt muss gültiges Block-Markup sein. Vorher wird automatisch eine Sicherung angelegt.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'id'      => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
+						'titel'   => array( 'type' => 'string', 'description' => __( 'Optional: neuer Titel.', 'wp-ai-edit' ) ),
+						'inhalt'  => array( 'type' => 'string', 'description' => __( 'Neuer Inhalt als Block-Markup.', 'wp-ai-edit' ) ),
+						'status'  => array( 'type' => 'string', 'enum' => array( 'publish', 'draft', 'private' ) ),
+					),
+					'required'             => array( 'id', 'inhalt' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_seite_schreiben' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'idempotent' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Seite aktualisieren.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_seite_schreiben( $input = array() ) {
+		$id     = (int) ( $input['id'] ?? 0 );
+		$inhalt = (string) ( $input['inhalt'] ?? '' );
+		$post   = get_post( $id );
+
+		if ( ! $post ) {
+			return new WP_Error( 'kiedit_unbekannt', __( 'Seite nicht gefunden.', 'wp-ai-edit' ) );
+		}
+		if ( ! current_user_can( 'edit_post', $id ) ) {
+			return new WP_Error( 'kiedit_rechte', __( 'Keine Berechtigung für diese Seite.', 'wp-ai-edit' ) );
+		}
+
+		self::sicherung_anlegen( 'update-page', $id, $post->post_content, $post->post_title );
+
+		$werte = array(
+			'ID'           => $id,
+			'post_content' => wp_kses_post( $inhalt ),
+		);
+		if ( isset( $input['titel'] ) && '' !== $input['titel'] ) {
+			$werte['post_title'] = sanitize_text_field( (string) $input['titel'] );
+		}
+		if ( isset( $input['status'] ) && in_array( $input['status'], array( 'publish', 'draft', 'private' ), true ) ) {
+			$werte['post_status'] = $input['status'];
+		}
+
+		$neu = wp_update_post( $werte, true );
+		if ( is_wp_error( $neu ) ) {
+			return $neu;
+		}
+		self::protokoll( 'kiedit/update-page', $input, $neu );
+
+		return array(
+			'id'      => $id,
+			'status'  => get_post_status( $id ),
+			'link'    => get_permalink( $id ),
+			'zeichen' => mb_strlen( $inhalt ),
+		);
+	}
+
+	/**
+	 * Fähigkeit: neue Seite anlegen.
+	 *
+	 * @return void
+	 */
+	protected static function seite_anlegen(): void {
+		wp_register_ability(
+			'kiedit/create-page',
+			array(
+				'label'               => __( 'Seite anlegen', 'wp-ai-edit' ),
+				'description'         => __( 'Legt eine neue Seite mit Block-Markup an.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'titel'  => array( 'type' => 'string' ),
+						'slug'   => array( 'type' => 'string' ),
+						'inhalt' => array( 'type' => 'string' ),
+						'status' => array( 'type' => 'string', 'enum' => array( 'publish', 'draft' ) ),
+					),
+					'required'             => array( 'titel', 'inhalt' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_seite_anlegen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Seite anlegen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_seite_anlegen( $input = array() ) {
+		$titel = sanitize_text_field( (string) ( $input['titel'] ?? '' ) );
+		if ( '' === $titel ) {
+			return new WP_Error( 'kiedit_titel', __( 'Titel fehlt.', 'wp-ai-edit' ) );
+		}
+
+		$id = wp_insert_post(
+			array(
+				'post_type'    => 'page',
+				'post_title'   => $titel,
+				'post_name'    => sanitize_title( (string) ( $input['slug'] ?? $titel ) ),
+				'post_content' => wp_kses_post( (string) ( $input['inhalt'] ?? '' ) ),
+				'post_status'  => in_array( ( $input['status'] ?? 'draft' ), array( 'publish', 'draft' ), true ) ? $input['status'] : 'draft',
+			),
+			true
+		);
+
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		self::protokoll( 'kiedit/create-page', $input, $id );
+
+		return array(
+			'id'     => $id,
+			'titel'  => $titel,
+			'status' => get_post_status( $id ),
+			'link'   => get_permalink( $id ),
+		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 3. Einstellungen                                                    */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Fähigkeit: Website-Optionen setzen.
+	 *
+	 * @return void
+	 */
+	protected static function optionen_setzen(): void {
+		wp_register_ability(
+			'kiedit/set-options',
+			array(
+				'label'               => __( 'Einstellungen ändern', 'wp-ai-edit' ),
+				'description'         => __( 'Ändert freigegebene Website-Einstellungen: Titel, Untertitel, Beitragsanzahl, Datumsformat und weitere.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'optionen' => array(
+							'type'        => 'object',
+							'description' => __( 'Schlüssel-Wert-Paare der zu ändernden Optionen.', 'wp-ai-edit' ),
+						),
+					),
+					'required'             => array( 'optionen' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_optionen_setzen' ),
+				'permission_callback' => static fn() => current_user_can( 'manage_options' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Optionen setzen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_optionen_setzen( $input = array() ) {
+		$erlaubt = self::erlaubte_optionen();
+		$werte   = isset( $input['optionen'] ) && is_array( $input['optionen'] ) ? $input['optionen'] : array();
+		$geaendert = array();
+		$abgelehnt = array();
+
+		foreach ( $werte as $key => $wert ) {
+			if ( ! isset( $erlaubt[ $key ] ) ) {
+				$abgelehnt[] = $key;
+				continue;
+			}
+			self::sicherung_anlegen( 'set-options', 0, (string) get_option( $key ), $key );
+
+			if ( 'integer' === $erlaubt[ $key ] ) {
+				$wert = (int) $wert;
+			} elseif ( in_array( $key, array( 'blogname', 'blogdescription' ), true ) ) {
+				$wert = sanitize_text_field( (string) $wert );
+			} elseif ( 'admin_email' === $key ) {
+				$wert = sanitize_email( (string) $wert );
+			} else {
+				$wert = sanitize_text_field( (string) $wert );
+			}
+
+			update_option( $key, $wert );
+			$geaendert[ $key ] = $wert;
+		}
+
+		self::protokoll( 'kiedit/set-options', $input, $geaendert );
+
+		return array(
+			'geaendert' => $geaendert,
+			'abgelehnt' => $abgelehnt,
+			'erlaubt'   => array_keys( $erlaubt ),
+		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 4. Plugins                                                          */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Liefert Plugin-Daten.
+	 *
+	 * @return array
+	 */
+	protected static function plugins_daten(): array {
+		if ( ! function_exists( 'get_plugins' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		$alle   = get_plugins();
+		$aktiv  = (array) get_option( 'active_plugins', array() );
+		$liste  = array();
+
+		foreach ( $alle as $datei => $info ) {
+			$liste[] = array(
+				'datei'   => $datei,
+				'slug'    => dirname( $datei ),
+				'name'    => $info['Name'],
+				'version' => $info['Version'],
+				'aktiv'   => in_array( $datei, $aktiv, true ),
+			);
+		}
+		return $liste;
+	}
+
+	/**
+	 * Fähigkeit: Plugins auflisten.
+	 *
+	 * @return void
+	 */
+	protected static function plugins_auflisten(): void {
+		wp_register_ability(
+			'kiedit/list-plugins',
+			array(
+				'label'               => __( 'Plugins auflisten', 'wp-ai-edit' ),
+				'description'         => __( 'Listet alle installierten Plugins mit Version und Aktivierungsstatus.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array( 'type' => 'object', 'properties' => array(), 'additionalProperties' => false ),
+				'execute_callback'    => array( __CLASS__, 'cb_plugins_auflisten' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'readonly' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Plugins auflisten.
+	 *
+	 * @return array
+	 */
+	public static function cb_plugins_auflisten(): array {
+		return self::plugins_daten();
+	}
+
+	/**
+	 * Fähigkeit: Plugin installieren.
+	 *
+	 * @return void
+	 */
+	protected static function plugin_installieren(): void {
+		wp_register_ability(
+			'kiedit/install-plugin',
+			array(
+				'label'               => __( 'Plugin installieren', 'wp-ai-edit' ),
+				'description'         => __( 'Installiert ein Plugin aus dem offiziellen WordPress-Repository über seinen Slug, zum Beispiel "contact-form-7". Fremde URLs sind nicht erlaubt.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'slug'     => array( 'type' => 'string', 'description' => __( 'Repository-Slug, z. B. contact-form-7.', 'wp-ai-edit' ) ),
+						'aktivieren' => array( 'type' => 'boolean', 'description' => __( 'Nach der Installation aktivieren.', 'wp-ai-edit' ) ),
+						'version'  => array( 'type' => 'string', 'description' => __( 'Optional: feste Version.', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'slug' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_plugin_installieren' ),
+				'permission_callback' => static fn() => current_user_can( 'install_plugins' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Plugin installieren.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_plugin_installieren( $input = array() ) {
+		$slug = sanitize_key( (string) ( $input['slug'] ?? '' ) );
+		if ( '' === $slug ) {
+			return new WP_Error( 'kiedit_slug', __( 'Slug fehlt.', 'wp-ai-edit' ) );
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+		require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+
+		// Nur aus dem offiziellen Repository.
+		$info = plugins_api( 'plugin_information', array( 'slug' => $slug, 'fields' => array( 'sections' => false ) ) );
+		if ( is_wp_error( $info ) ) {
+			return new WP_Error( 'kiedit_unbekannt', __( 'Plugin im Repository nicht gefunden.', 'wp-ai-edit' ) );
+		}
+
+		$version = isset( $input['version'] ) && '' !== $input['version'] ? (string) $input['version'] : '';
+		$quelle  = $version
+			? sprintf( 'https://downloads.wordpress.org/plugin/%s.%s.zip', $slug, $version )
+			: sprintf( 'https://downloads.wordpress.org/plugin/%s.zip', $slug );
+
+		$upgrader = new Plugin_Upgrader( new Automatic_Upgrader_Skin() );
+		$ergebnis = $upgrader->install( $quelle );
+
+		if ( is_wp_error( $ergebnis ) ) {
+			return $ergebnis;
+		}
+		if ( true !== $ergebnis ) {
+			return new WP_Error( 'kiedit_install', __( 'Installation fehlgeschlagen.', 'wp-ai-edit' ) );
+		}
+
+		$datei   = $upgrader->plugin_info();
+		$aktiviert = false;
+
+		if ( ! empty( $input['aktivieren'] ) && $datei ) {
+			$aktiviert = null === activate_plugin( $datei );
+		}
+
+		self::protokoll( 'kiedit/install-plugin', $input, $datei );
+
+		return array(
+			'slug'      => $slug,
+			'version'   => $info->version ?? $version,
+			'datei'     => $datei,
+			'aktiviert' => $aktiviert,
+			'name'      => $info->name ?? $slug,
+		);
+	}
+
+	/**
+	 * Fähigkeit: Plugin aktivieren oder deaktivieren.
+	 *
+	 * @return void
+	 */
+	protected static function plugin_aktivieren(): void {
+		wp_register_ability(
+			'kiedit/toggle-plugin',
+			array(
+				'label'               => __( 'Plugin aktivieren/deaktivieren', 'wp-ai-edit' ),
+				'description'         => __( 'Aktiviert oder deaktiviert ein bereits installiertes Plugin. Der Dateipfad aus "Plugins auflisten" wird benötigt.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'datei'  => array( 'type' => 'string', 'description' => __( 'Plugin-Datei, z. B. contact-form-7/wp-contact-form-7.php', 'wp-ai-edit' ) ),
+						'aktiv'  => array( 'type' => 'boolean' ),
+					),
+					'required'             => array( 'datei', 'aktiv' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_plugin_aktivieren' ),
+				'permission_callback' => static fn() => current_user_can( 'activate_plugins' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Plugin aktivieren/deaktivieren.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_plugin_aktivieren( $input = array() ) {
+		if ( ! function_exists( 'activate_plugin' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		$datei = (string) ( $input['datei'] ?? '' );
+		$aktiv = ! empty( $input['aktiv'] );
+
+		if ( ! file_exists( WP_PLUGIN_DIR . '/' . $datei ) ) {
+			return new WP_Error( 'kiedit_datei', __( 'Plugin-Datei nicht gefunden.', 'wp-ai-edit' ) );
+		}
+
+		if ( $aktiv ) {
+			$r = activate_plugin( $datei );
+			if ( is_wp_error( $r ) ) {
+				return $r;
+			}
+		} else {
+			deactivate_plugins( array( $datei ) );
+		}
+
+		self::protokoll( 'kiedit/toggle-plugin', $input, $datei );
+
+		return array( 'datei' => $datei, 'aktiv' => $aktiv );
+	}
+
+	/**
+	 * Fähigkeit: Plugin-Einstellung ändern.
+	 *
+	 * @return void
+	 */
+	protected static function plugin_option_setzen(): void {
+		wp_register_ability(
+			'kiedit/set-plugin-setting',
+			array(
+				'label'               => __( 'Plugin-Einstellung ändern', 'wp-ai-edit' ),
+				'description'         => __( 'Schreibt eine einzelne Plugin-Option. Nur Optionsnamen mit mindestens einem Unterstrich und einer der Präfixe der aktiven Plugins sind erlaubt.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'option' => array( 'type' => 'string' ),
+						'wert'   => array( 'description' => __( 'Neuer Wert (Text, Zahl, Wahrheitswert oder Objekt).', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'option', 'wert' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_plugin_option_setzen' ),
+				'permission_callback' => static fn() => current_user_can( 'manage_options' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Plugin-Einstellung ändern.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_plugin_option_setzen( $input = array() ) {
+		$option = sanitize_key( (string) ( $input['option'] ?? '' ) );
+
+		if ( '' === $option || ! str_contains( $option, '_' ) ) {
+			return new WP_Error( 'kiedit_option', __( 'Optionsname unplausibel.', 'wp-ai-edit' ) );
+		}
+		// Core-Optionen nur ueber set-options.
+		if ( isset( self::erlaubte_optionen()[ $option ] ) ) {
+			return new WP_Error( 'kiedit_option', __( 'Core-Option: bitte set-options verwenden.', 'wp-ai-edit' ) );
+		}
+
+		self::sicherung_anlegen( 'set-plugin-setting', 0, (string) get_option( $option ), $option );
+
+		$wert = $input['wert'] ?? '';
+		if ( is_array( $wert ) ) {
+			$wert = map_deep( $wert, 'sanitize_text_field' );
+		} elseif ( is_bool( $wert ) || is_int( $wert ) || is_float( $wert ) ) {
+			$wert = $wert;
+		} else {
+			$wert = sanitize_textarea_field( (string) $wert );
+		}
+
+		update_option( $option, $wert );
+		self::protokoll( 'kiedit/set-plugin-setting', $input, $option );
+
+		return array( 'option' => $option, 'gespeichert' => true );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 5. Designs fremder Seiten einlesen                                  */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Fähigkeit: Design-Inspiration von einer URL einlesen.
+	 *
+	 * @return void
+	 */
+	protected static function design_einlesen(): void {
+		wp_register_ability(
+			'kiedit/fetch-design',
+			array(
+				'label'               => __( 'Design einer fremden Seite einlesen', 'wp-ai-edit' ),
+				'description'         => __( 'Liest eine öffentliche Webseite und extrahiert Farben, Schriften, Überschriftenstruktur und Layout-Abschnitte als Inspiration. Gibt kompaktes JSON zurück.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'url'        => array( 'type' => 'string', 'description' => __( 'Vollständige URL mit https://', 'wp-ai-edit' ) ),
+						'umfang'     => array( 'type' => 'string', 'enum' => array( 'kurz', 'voll' ) ),
+					),
+					'required'             => array( 'url' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_design_einlesen' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'readonly' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Design einlesen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_design_einlesen( $input = array() ) {
+		$url = esc_url_raw( (string) ( $input['url'] ?? '' ) );
+		if ( '' === $url ) {
+			return new WP_Error( 'kiedit_url', __( 'URL fehlt.', 'wp-ai-edit' ) );
+		}
+
+		$analyse = WP_AI_Edit_Inspector::analysiere( $url, 'voll' === ( $input['umfang'] ?? 'kurz' ) );
+		if ( is_wp_error( $analyse ) ) {
+			return $analyse;
+		}
+
+		self::protokoll( 'kiedit/fetch-design', $input, $url );
+		return $analyse;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* 6. Sicherung und Rücksetzen                                         */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Legt eine Sicherung des vorherigen Zustands an.
+	 *
+	 * @param string $art       Art der Änderung.
+	 * @param int    $objekt_id Objekt-ID (0 wenn keins).
+	 * @param string $alt       Alter Wert.
+	 * @param string $bezeichnung Bezeichnung.
+	 * @return void
+	 */
+	public static function sicherung_anlegen( string $art, int $objekt_id, string $alt, string $bezeichnung = '' ): void {
+		$sicherungen = get_option( 'wp_ai_edit_snapshots', array() );
+		if ( ! is_array( $sicherungen ) ) {
+			$sicherungen = array();
+		}
+		array_unshift(
+			$sicherungen,
+			array(
+				'zeit'        => current_time( 'mysql' ),
+				'nutzer'      => get_current_user_id(),
+				'art'         => $art,
+				'objekt_id'   => $objekt_id,
+				'bezeichnung' => $bezeichnung,
+				'wert'        => $alt,
+			)
+		);
+		update_option( 'wp_ai_edit_snapshots', array_slice( $sicherungen, 0, 100 ), false );
+	}
+
+	/**
+	 * Fähigkeit: Sicherung anlegen (manueller Aufruf durch das Modell).
+	 *
+	 * @return void
+	 */
+	protected static function snapshot(): void {
+		wp_register_ability(
+			'kiedit/snapshot',
+			array(
+				'label'               => __( 'Sicherung anlegen', 'wp-ai-edit' ),
+				'description'         => __( 'Sichert den aktuellen Inhalt einer Seite, bevor sie geändert wird.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'id'          => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
+						'bezeichnung' => array( 'type' => 'string' ),
+					),
+					'required'             => array( 'id' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_snapshot' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'idempotent' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Sicherung anlegen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_snapshot( $input = array() ) {
+		$id   = (int) ( $input['id'] ?? 0 );
+		$post = get_post( $id );
+		if ( ! $post ) {
+			return new WP_Error( 'kiedit_unbekannt', __( 'Seite nicht gefunden.', 'wp-ai-edit' ) );
+		}
+		self::sicherung_anlegen( 'manuell', $id, $post->post_content, (string) ( $input['bezeichnung'] ?? $post->post_title ) );
+		return array( 'id' => $id, 'gesichert' => true, 'zeichen' => mb_strlen( $post->post_content ) );
+	}
+
+	/**
+	 * Fähigkeit: Stand zurücksetzen.
+	 *
+	 * @return void
+	 */
+	protected static function rollback(): void {
+		wp_register_ability(
+			'kiedit/rollback',
+			array(
+				'label'               => __( 'Stand zurücksetzen', 'wp-ai-edit' ),
+				'description'         => __( 'Stellt den Inhalt einer Seite aus der jüngsten Sicherung wieder her.', 'wp-ai-edit' ),
+				'category'            => 'kiedit',
+				'input_schema'        => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'id'    => array( 'type' => 'integer', 'description' => __( 'Seiten-ID.', 'wp-ai-edit' ) ),
+						'index' => array( 'type' => 'integer', 'description' => __( '0 = jüngste Sicherung.', 'wp-ai-edit' ) ),
+					),
+					'required'             => array( 'id' ),
+					'additionalProperties' => false,
+				),
+				'execute_callback'    => array( __CLASS__, 'cb_rollback' ),
+				'permission_callback' => array( __CLASS__, 'darf_schreiben' ),
+				'meta'                => array( 'destructive' => true, 'show_in_rest' => true ),
+			)
+		);
+	}
+
+	/**
+	 * Callback: Stand zurücksetzen.
+	 *
+	 * @param array $input Eingabe.
+	 * @return array|WP_Error
+	 */
+	public static function cb_rollback( $input = array() ) {
+		$id      = (int) ( $input['id'] ?? 0 );
+		$index   = (int) ( $input['index'] ?? 0 );
+		$alle    = get_option( 'wp_ai_edit_snapshots', array() );
+		$passend = array();
+
+		if ( is_array( $alle ) ) {
+			foreach ( $alle as $s ) {
+				if ( (int) $s['objekt_id'] === $id && ! empty( $s['wert'] ) ) {
+					$passend[] = $s;
+				}
+			}
+		}
+
+		if ( ! isset( $passend[ $index ] ) ) {
+			return new WP_Error( 'kiedit_sicherung', __( 'Keine passende Sicherung gefunden.', 'wp-ai-edit' ) );
+		}
+
+		$s = $passend[ $index ];
+		self::sicherung_anlegen( 'rollback', $id, (string) get_post_field( 'post_content', $id ), 'vor Rücksetzung' );
+
+		$r = wp_update_post( array( 'ID' => $id, 'post_content' => $s['wert'] ), true );
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+		self::protokoll( 'kiedit/rollback', $input, $id );
+
+		return array( 'id' => $id, 'wiederhergestellt_aus' => $s['zeit'] );
+	}
+}
