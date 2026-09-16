@@ -69,11 +69,13 @@ class WP_AI_Edit_Meldung {
 	}
 
 	/**
-	 * Meldet die Aktivierung. Wird beim Aktivieren des Plugins aufgerufen.
+	 * Meldet die Aktivierung.
 	 *
-	 * @return array|WP_Error Antwort oder Fehler.
+	 * @param bool $warten Auf die Antwort warten? Beim Seitenaufbau im Backend
+	 *                     nicht, damit die Seite nicht hängt.
+	 * @return array|WP_Error Antwort oder Fehler. Ohne Warten ein leeres Ergebnis.
 	 */
-	public static function melden() {
+	public static function melden( bool $warten = true ) {
 		if ( ! self::eingeschaltet() ) {
 			return new WP_Error( 'wpaie_meldung_aus', __( 'Die Meldung ist abgeschaltet.', 'wp-ai-edit' ) );
 		}
@@ -82,6 +84,7 @@ class WP_AI_Edit_Meldung {
 			self::endpunkt(),
 			array(
 				'timeout'     => 15,
+				'blocking'    => $warten,
 				'redirection' => 2,
 				'headers'     => array( 'Accept' => 'application/json' ),
 				'body'        => array(
@@ -94,6 +97,16 @@ class WP_AI_Edit_Meldung {
 				),
 			)
 		);
+
+		// Ohne Warten gibt es keine Antwort — nur das Absetzen zählt.
+		if ( ! $warten ) {
+			return array(
+				'ok'       => true,
+				'code'     => 0,
+				'text'     => __( 'Meldung abgeschickt (ohne Rückmeldung abzuwarten).', 'wp-ai-edit' ),
+				'endpunkt' => self::endpunkt(),
+			);
+		}
 
 		if ( is_wp_error( $antwort ) ) {
 			self::merken( 'Fehler: ' . $antwort->get_error_message(), false );

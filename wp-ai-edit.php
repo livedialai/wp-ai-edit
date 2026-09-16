@@ -3,7 +3,7 @@
  * Plugin Name:       WP AI Edit
  * Plugin URI:        https://github.com/livedialai/wp-ai-edit
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
- * Version:           1.1.2
+ * Version:           1.1.3
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Author:            Weser AI
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPAIE_VERSION', '1.1.2' );
+define( 'WPAIE_VERSION', '1.1.3' );
 define( 'WPAIE_FILE', __FILE__ );
 define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) );
@@ -126,6 +126,29 @@ class WP_AI_Edit {
 		// Meldung an die Sammelstelle beim Aktivieren.
 		register_activation_hook( WPAIE_FILE, array( 'WP_AI_Edit_Meldung', 'melden' ) );
 		add_action( 'admin_init', array( $this, 'meldung_test' ) );
+		// Meldet sich auch nach einem Update — der Aktivierungshaken feuert dabei nicht.
+		add_action( 'admin_init', array( $this, 'versionsabgleich' ) );
+	}
+
+	/**
+	 * Meldet sich, wenn die laufende Version noch nicht gemeldet wurde.
+	 *
+	 * Der Aktivierungshaken feuert bei einem Update nicht. Ohne diese Prüfung
+	 * bliebe jede aktualisierte Installation unregistriert.
+	 *
+	 * @return void
+	 */
+	public function versionsabgleich(): void {
+		if ( ! WP_AI_Edit_Meldung::eingeschaltet() ) {
+			return;
+		}
+		$gemeldet = (string) get_option( 'wp_ai_edit_gemeldet', '' );
+		if ( $gemeldet === WPAIE_VERSION ) {
+			return;
+		}
+		// Zuerst merken, dann senden — sonst wiederholt es sich bei jedem Seitenaufbau.
+		update_option( 'wp_ai_edit_gemeldet', WPAIE_VERSION, false );
+		WP_AI_Edit_Meldung::melden( false );
 	}
 
 	/**

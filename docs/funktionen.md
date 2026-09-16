@@ -1,6 +1,6 @@
 # Funktionen — vollständige Referenz
 
-Stand: 2026-09-16 15:48:52 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.2
+Stand: 2026-09-16 16:01:48 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.3
 
 Diese Datei wird aus einer **laufenden Installation** erzeugt: die Fähigkeiten kommen
 aus `wp_get_abilities()`, die Routen aus dem REST-Server, die Modi aus `class-rest.php`.
@@ -444,7 +444,7 @@ Meldung an die Sammelstelle admin.gomeetme.de. Beim Aktivieren meldet sich das P
 | `eingeschaltet()` | public | Meldung an die Sammelstelle admin.gomeetme.de. |
 | `endpunkt()` | public | Adresse der Sammelstelle, änderbar per Filter. |
 | `geheimnis()` | public | Geheimnis, änderbar per Filter oder Konstante. |
-| `melden()` | public | Meldet die Aktivierung. Wird beim Aktivieren des Plugins aufgerufen. |
+| `melden()` | public | Meldet die Aktivierung. |
 | `letzte()` | public | Zuletzt gemeldetes Ergebnis. |
 
 *Dazu 1 interne Methoden.*
@@ -487,7 +487,7 @@ Vorschlags-Schicht: Änderungen landen als Entwurf zur Bestätigung, können abe
 
 ### `wp-ai-edit.php` — `WP_AI_Edit`
 
-Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.2 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.2' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
+Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.3 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.3' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
 
 | Methode | Sichtbar | Zweck |
 |---|:--:|---|
@@ -495,6 +495,7 @@ Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/w
 | `prompt_standard()` | public | Eingebauter Standard-Prompt, falls weder Option noch Datei vorliegt. |
 | `settings()` | public | Einstellungen lesen. |
 | `update()` | public | Einstellungen schreiben. |
+| `versionsabgleich()` | public | Meldet sich, wenn die laufende Version noch nicht gemeldet wurde. |
 | `meldung_test()` | public | Meldung an die Sammelstelle jetzt auslösen (?meldung_test=1). |
 | `bild_test()` | public | Verbindung und Guthaben des Bilddienstes prüfen (?bild_test=1). |
 | `menue()` | public | Einstellungsseite anlegen. |
