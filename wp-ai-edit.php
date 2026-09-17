@@ -3,7 +3,7 @@
  * Plugin Name:       WP AI Edit
  * Plugin URI:        https://github.com/livedialai/wp-ai-edit
  * Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht.
- * Version:           1.1.5
+ * Version:           1.2.0
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Author:            Weser AI
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPAIE_VERSION', '1.1.5' );
+define( 'WPAIE_VERSION', '1.2.0' );
 define( 'WPAIE_FILE', __FILE__ );
 define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) );
@@ -51,6 +51,8 @@ class WP_AI_Edit {
 			'workflow'       => 'stage',
 			// Einmalige Anmeldung der Installation.
 			'melden'         => 1,
+			// Fernzugriff per Anwendungspasswort erlauben.
+			'fern_an'        => 1,
 			// Bildgenerierung. Schlüssel bleibt leer — er gehört in die Option, nicht ins Repo.
 			'bild_key'       => '',
 			'bild_modell'    => 'bytedance/seedream-v4.5',
@@ -108,11 +110,15 @@ class WP_AI_Edit {
 		require_once WPAIE_DIR . 'includes/class-meldung.php';
 		require_once WPAIE_DIR . 'includes/class-llm.php';
 		require_once WPAIE_DIR . 'includes/class-rest.php';
+		require_once WPAIE_DIR . 'includes/class-fernzugriff.php';
 
 		add_action( 'wp_abilities_api_categories_init', array( 'WP_AI_Edit_Abilities', 'kategorien' ) );
 		add_action( 'wp_abilities_api_init', array( 'WP_AI_Edit_Abilities', 'registrieren' ) );
 
 		add_action( 'rest_api_init', array( 'WP_AI_Edit_REST', 'routen' ) );
+
+		// Fernzugriff: Anwendungspasswoerter erkennen, protokollieren, Auskunft erteilen.
+		WP_AI_Edit_Fernzugriff::starten();
 
 		// Vorschau vorgeschlagener Änderungen (?wpaie_vorschau=<id>).
 		add_action( 'init', array( 'WP_AI_Edit_Workflow', 'vorschau_ausgeben' ) );
@@ -344,6 +350,31 @@ class WP_AI_Edit {
 			return;
 		}
 
+		$neuer_zugang = '';
+
+		// Fernzugriff: neuen Zugang anlegen.
+		if ( isset( $_POST['wpaie_fern_neu'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpaie_fern_neu'] ) ), 'wpaie_fern_neu' ) ) {
+			$name   = isset( $_POST['fern_name'] ) ? sanitize_text_field( wp_unslash( $_POST['fern_name'] ) ) : '';
+			$ergebnis = WP_AI_Edit_Fernzugriff::anlegen( $name );
+			if ( is_wp_error( $ergebnis ) ) {
+				echo '<div class="notice notice-error"><p>' . esc_html( $ergebnis->get_error_message() ) . '</p></div>';
+			} else {
+				// Das Passwort zeigt WordPress nur einmal — hier direkt, nicht ueber die Datenbank.
+				$neuer_zugang = $ergebnis[0];
+			}
+		}
+
+		// Fernzugriff: Zugang widerrufen.
+		if ( isset( $_GET['fern_weg'], $_GET['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'wpaie_fern_weg' ) ) {
+			$teile = explode( ':', (string) wp_unslash( $_GET['fern_weg'] ), 2 );
+			if ( 2 === count( $teile ) ) {
+				$weg = WP_AI_Edit_Fernzugriff::widerrufen( (int) $teile[0], sanitize_text_field( $teile[1] ) );
+				if ( ! is_wp_error( $weg ) ) {
+					echo '<div class="notice notice-success"><p>' . esc_html__( 'Zugang widerrufen.', 'wp-ai-edit' ) . '</p></div>';
+				}
+			}
+		}
+
 		if ( isset( $_POST['wpaie_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpaie_nonce'] ) ), 'wpaie_settings' ) ) {
 
 			// Sichtbarkeit.
@@ -353,6 +384,7 @@ class WP_AI_Edit {
 					'min_capability' => isset( $_POST['min_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['min_capability'] ) ) : 'edit_pages',
 					'history_limit'  => isset( $_POST['history_limit'] ) ? max( 2, min( 40, (int) $_POST['history_limit'] ) ) : 12,
 					'workflow'       => ( isset( $_POST['workflow'] ) && 'direct' === $_POST['workflow'] ) ? 'direct' : 'stage',
+					'fern_an'        => isset( $_POST['fern_an'] ) ? 1 : 0,
 				)
 			);
 
@@ -527,6 +559,17 @@ class WP_AI_Edit {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Fernzugriff', 'wp-ai-edit' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Zugriff erlauben', 'wp-ai-edit' ); ?></th>
+						<td>
+							<label><input type="checkbox" name="fern_an" value="1" <?php checked( ! empty( $s['fern_an'] ) ); ?>> <?php esc_html_e( 'Zugriff über Anwendungspasswörter zulassen', 'wp-ai-edit' ); ?></label>
+							<p class="description"><?php esc_html_e( 'Eine Agentur-Instanz kann diese Website damit über HTTPS fernbedienen. Die Rechte richten sich nach dem Benutzer, dem das Anwendungspasswort gehört — ein Administrator-Zugang hat alle Rechte.', 'wp-ai-edit' ); ?></p>
+						</td>
+					</tr>
+				</table>
+
 				<h2><?php esc_html_e( 'Sichtbarkeit', 'wp-ai-edit' ); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
@@ -558,6 +601,93 @@ class WP_AI_Edit {
 
 				<?php submit_button(); ?>
 			</form>
+
+			<h2><?php esc_html_e( 'Fernzugriff: Zugänge', 'wp-ai-edit' ); ?></h2>
+
+			<?php if ( '' !== $neuer_zugang ) : ?>
+				<div class="notice notice-success">
+					<p><strong><?php esc_html_e( 'Zugang angelegt. Das Passwort wird nur dieses eine Mal angezeigt:', 'wp-ai-edit' ); ?></strong></p>
+					<p><code style="font-size:1.1em;padding:8px 12px;display:inline-block;"><?php echo esc_html( $neuer_zugang ); ?></code></p>
+					<p class="description"><?php esc_html_e( 'Jetzt kopieren und in der Agentur-Instanz hinterlegen. Später lässt es sich nicht mehr anzeigen — dann hilft nur ein neuer Zugang.', 'wp-ai-edit' ); ?></p>
+				</div>
+			<?php endif; ?>
+
+			<?php
+			$tokens = WP_AI_Edit_Fernzugriff::tokens();
+			if ( ! $tokens ) :
+				?>
+				<p><?php esc_html_e( 'Noch kein Zugang angelegt.', 'wp-ai-edit' ); ?></p>
+				<?php
+			else :
+				?>
+				<table class="widefat striped" style="max-width:900px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Name', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Benutzer', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Angelegt', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Zuletzt benutzt', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Letzte IP', 'wp-ai-edit' ); ?></th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $tokens as $t ) : ?>
+							<tr>
+								<td><strong><?php echo esc_html( $t['name'] ); ?></strong></td>
+								<td><?php echo esc_html( $t['nutzer'] ); ?></td>
+								<td><?php echo esc_html( wp_date( 'd.m.Y H:i', $t['angelegt'] ) ); ?></td>
+								<td><?php echo $t['zuletzt'] ? esc_html( wp_date( 'd.m.Y H:i', $t['zuletzt'] ) ) : '—'; ?></td>
+								<td><?php echo $t['letzte_ip'] ? esc_html( $t['letzte_ip'] ) : '—'; ?></td>
+								<td><a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'fern_weg', $t['nutzer_id'] . ':' . $t['uuid'], menu_page_url( 'wp-ai-edit', false ) ), 'wpaie_fern_weg' ) ); ?>" onclick="return confirm('<?php echo esc_js( __( 'Diesen Zugang wirklich widerrufen?', 'wp-ai-edit' ) ); ?>');"><?php esc_html_e( 'Widerrufen', 'wp-ai-edit' ); ?></a></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+				<?php
+			endif;
+			?>
+
+			<h3><?php esc_html_e( 'Neuen Zugang anlegen', 'wp-ai-edit' ); ?></h3>
+			<form method="post" style="max-width:900px;">
+				<?php wp_nonce_field( 'wpaie_fern_neu', 'wpaie_fern_neu' ); ?>
+				<p>
+					<input type="text" class="regular-text" name="fern_name" placeholder="<?php esc_attr_e( 'z. B. Agentur Weser', 'wp-ai-edit' ); ?>" required>
+					<button class="button button-primary"><?php esc_html_e( 'Zugang anlegen', 'wp-ai-edit' ); ?></button>
+				</p>
+				<p class="description"><?php esc_html_e( 'Der Zugang gehört Ihrem eigenen Benutzerkonto und hat dessen Rechte. Er lässt sich hier jederzeit widerrufen.', 'wp-ai-edit' ); ?></p>
+			</form>
+
+			<h2><?php esc_html_e( 'Fernzugriff: Protokoll', 'wp-ai-edit' ); ?></h2>
+			<?php $fern_protokoll = WP_AI_Edit_Fernzugriff::protokoll( 25 ); ?>
+			<?php if ( ! $fern_protokoll ) : ?>
+				<p><?php esc_html_e( 'Bisher keine Fernzugriffe.', 'wp-ai-edit' ); ?></p>
+			<?php else : ?>
+				<table class="widefat striped" style="max-width:1100px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Zeit', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Vorgang', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Zugang', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Route', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'Status', 'wp-ai-edit' ); ?></th>
+							<th><?php esc_html_e( 'IP', 'wp-ai-edit' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $fern_protokoll as $e ) : ?>
+							<tr>
+								<td><?php echo esc_html( isset( $e['zeit'] ) ? $e['zeit'] : '' ); ?></td>
+								<td><?php echo esc_html( isset( $e['art'] ) ? $e['art'] : '' ); ?></td>
+								<td><?php echo esc_html( isset( $e['zugang'] ) ? $e['zugang'] : '' ); ?></td>
+								<td><code style="font-size:0.85em;"><?php echo esc_html( isset( $e['route'] ) ? $e['methode'] . ' ' . $e['route'] : '—' ); ?></code></td>
+								<td><?php echo isset( $e['status'] ) ? (int) $e['status'] : '—'; ?></td>
+								<td><?php echo esc_html( isset( $e['ip'] ) ? $e['ip'] : '' ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
 
 			<h2><?php esc_html_e( 'Registrierte Fähigkeiten', 'wp-ai-edit' ); ?></h2>
 			<table class="widefat striped">

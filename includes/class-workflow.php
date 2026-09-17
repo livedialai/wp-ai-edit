@@ -77,6 +77,7 @@ class WP_AI_Edit_Workflow {
 			'id'      => substr( md5( $art . microtime( true ) . wp_rand() ), 0, 12 ),
 			'zeit'    => current_time( 'mysql' ),
 			'nutzer'  => get_current_user_id(),
+			'herkunft' => ( class_exists( 'WP_AI_Edit_Fernzugriff' ) && WP_AI_Edit_Fernzugriff::ist_fern() ) ? 'fern' : 'lokal',
 			'art'     => $art,
 			'ziel'    => $ziel,
 			'neu'     => $neu,

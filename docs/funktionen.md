@@ -1,6 +1,6 @@
 # Funktionen — vollständige Referenz
 
-Stand: 2026-09-16 18:48:32 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.1.5
+Stand: 2026-09-17 14:40:31 · WordPress 7.1 · PHP 8.2.33 · Plugin 1.2.0
 
 Diese Datei wird aus einer **laufenden Installation** erzeugt: die Fähigkeiten kommen
 aus `wp_get_abilities()`, die Routen aus dem REST-Server, die Modi aus `class-rest.php`.
@@ -290,6 +290,7 @@ angemeldete Sitzung mit dem Mindestrecht; ohne Anmeldung antworten sie mit HTTP 
 | GET | `/pending` | — | ✅ |
 | POST | `/pending/apply` | `id` | ✅ |
 | POST | `/pending/discard` | `id` | ✅ |
+| GET | `/auskunft` | — | ✅ |
 
 Vom Chatfenster benutzt werden `/status`, `/chat`, `/reset` und die drei
 `/pending`-Routen; `/test` gehört zur Einstellungsseite.
@@ -321,6 +322,7 @@ Vom Chatfenster benutzt werden `/status`, `/chat`, `/reset` und die drei
 | `prompt_chat` | *(leer)* | Eigene Systemanweisung für den Nur-Lese-Modus; leer = mitgelieferte Datei |
 | `prompt_edit` | *(leer)* | Eigene Systemanweisung für den Bearbeitungsmodus; leer = mitgelieferte Datei |
 | `workflow` | `stage` | `stage` = erst vorschlagen, `direct` = sofort anwenden |
+| `fern_an` | `1` |  |
 | `bild_key` | *(wird beim Einrichten eingetragen)* | Schlüssel des Bilddienstes (WaveSpeed: `wsk_live_…`) |
 | `bild_modell` | `bytedance/seedream-v4.5` | Vorgabe: Seedream 4.5, Text zu Bild |
 | `bild_base` | `https://api.wavespeed.ai/api/v3` | Adresse der Bildschnittstelle |
@@ -408,6 +410,30 @@ Bildgenerierung über WaveSpeed (oder einen anderen kompatiblen Dienst). Ablauf:
 
 *Dazu 3 interne Methoden.*
 
+### `class-fernzugriff.php` — `WP_AI_Edit_Fernzugriff`
+
+Fernzugriff: Anwendungspasswörter, Auskunft und Protokoll. Eine Agentur-Instanz greift über HTTPS und ein Anwendungspasswort auf diese Website zu. Für WordPress ist das ein normaler Benutzer, die Berechtigungsprüfungen der Fähigkeiten greifen also unverändert. Diese Klasse kümmert sich um das Drumherum: erkennen, dass ein Zugriff von außen kommt, ihn protokollieren, eine Auskunft über die Website liefern und die Zugänge im Backend verwalten. @package WP_AI_Edit / if ( ! defined( 'ABSPATH' ) ) { exit; } / Verwaltung des Fernzugriffs.
+
+| Methode | Sichtbar | Zweck |
+|---|:--:|---|
+| `starten()` | public | Fernzugriff: Anwendungspasswörter, Auskunft und Protokoll. |
+| `angemeldet()` | public | Kennzeichnet die Anfrage als Fernzugriff. |
+| `fehlversuch()` | public | Ein gescheiterter Anmeldeversuch. |
+| `mitschreiben()` | public | Schreibt jeden Fernaufruf ins Protokoll. |
+| `ist_fern()` | public | Ist die laufende Anfrage ein Fernzugriff? |
+| `zugangsname()` | public | Name des verwendeten Zugangs, wenn bekannt. |
+| `erlaubt()` | public | Erlaubt der Betreiber den Fernzugriff? |
+| `protokoll()` | public | Liest das Protokoll. |
+| `protokoll_leeren()` | public | Löscht das Protokoll. |
+| `kennung()` | public | Dauerhafte Kennung dieser Website. |
+| `tokens()` | public | Alle Anwendungspasswörter der berechtigten Benutzer. |
+| `anlegen()` | public | Legt ein Anwendungspasswort an. |
+| `widerrufen()` | public | Widerruft einen Zugang. |
+| `routen()` | public | Meldet die Route an, über die die Agentur die Website abfragt. |
+| `auskunft()` | public | Auskunft über diese Website. |
+
+*Dazu 2 interne Methoden.*
+
 ### `class-inspector.php` — `WP_AI_Edit_Inspector`
 
 Liest fremde Webseiten ein und extrahiert daraus eine Design-Vorlage. @package WP_AI_Edit / if ( ! defined( 'ABSPATH' ) ) { exit; } / Analysiert eine öffentliche Webseite und liefert kompaktes Design-JSON.
@@ -472,7 +498,7 @@ Vorschlags-Schicht: Änderungen landen als Entwurf zur Bestätigung, können abe
 
 ### `wp-ai-edit.php` — `WP_AI_Edit`
 
-Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.1.5 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.1.5' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
+Plugin Name:       WP AI Edit Plugin URI:        https://github.com/livedialai/wp-ai-edit Description:       KI-Chat im WordPress-Backend, der die Website bearbeitet: Seiten befüllen, Plugins installieren und konfigurieren, Designs fremder Seiten als Inspiration einlesen. Erscheint ausschließlich im Backend als schwebendes Widget – auf der öffentlichen Website existiert es nicht. Version:           1.2.0 Requires at least: 6.9 Requires PHP:      8.0 Author:            Weser AI License:           GPL-2.0-or-later License URI:       https://www.gnu.org/licenses/gpl-2.0.html Text Domain:       wp-ai-edit @package WP_AI_Edit / // Direkter Aufruf verboten. if ( ! defined( 'ABSPATH' ) ) { exit; } define( 'WPAIE_VERSION', '1.2.0' ); define( 'WPAIE_FILE', __FILE__ ); define( 'WPAIE_DIR', plugin_dir_path( __FILE__ ) ); define( 'WPAIE_URL', plugin_dir_url( __FILE__ ) ); define( 'WPAIE_OPT', 'wp_ai_edit' ); / Hauptklasse. Registriert Hooks, REST-Routen und die Admin-Oberflaeche.
 
 | Methode | Sichtbar | Zweck |
 |---|:--:|---|

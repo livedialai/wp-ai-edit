@@ -7,6 +7,38 @@ KI-Chat **im WordPress-Backend**, der die Website bearbeitet. Erscheint als
 schwebendes Widget unten rechts in wp-admin — auf der öffentlichen Website
 existiert er nicht.
 
+## Fernzugriff (Agenturen)
+
+Eine Agentur-Instanz kann diese Website über HTTPS fernbedienen. Der Zugang läuft
+über **Anwendungspasswörter** — ein WordPress-Kernbestandteil, kein eigenes
+Schlüsselsystem. Für WordPress ist der Aufruf ein normaler Benutzer, deshalb
+greifen alle Berechtigungsprüfungen unverändert: ein Administrator-Zugang hat
+alle Rechte, ein Redakteur entsprechend weniger.
+
+**Zugang anlegen:** Einstellungen → WP AI Edit → Fernzugriff. Das Passwort wird
+**einmal** angezeigt — wie bei WordPress üblich. Jeder Zugang lässt sich dort
+jederzeit widerrufen; der Widerruf wirkt sofort.
+
+**Was die Agentur abfragen kann:**
+
+```
+GET  /wp-json/wp-ai-edit/v1/auskunft
+     Kennung, Website, WordPress- und PHP-Version, Theme, Seitenbauer,
+     aktive Plugins mit Versionen, Zahl der Fähigkeiten, Rechte des Zugangs
+
+GET  /wp-json/wp-abilities/v1/abilities
+POST /wp-json/wp-abilities/v1/abilities/kiedit/get-page/run
+     Jede Fähigkeit einzeln ausführen (WordPress-Standardweg der Abilities API)
+```
+
+**Protokoll:** Jede Anmeldung und jeder Aufruf landet mit Zeit, Zugangsname,
+Route, Status und gekürzter IP im Protokoll unter Einstellungen → Fernzugriff.
+Vorschläge, die über einen Fernzugriff eingereicht werden, tragen zusätzlich die
+Herkunft `fern`.
+
+Der Fernzugriff lässt sich im Reiter Fernzugriff abschalten. Fehlgeschlagene
+Anmeldeversuche werden ebenfalls protokolliert.
+
 ## Was es kann
 
 | Bereich | Fähigkeit |
